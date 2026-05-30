@@ -1,62 +1,75 @@
-# SSM-AdaptiveFilter
+# SSM-Adaptive-Filter
 
-Adaptive Filtering Meets Deep Learning: A Lightweight State Space Model Approach for Signal Enhancement
+Sparse channel estimation using deep-unfolded LISTA (Learned ISTA) and adaptive filtering baselines.
 
-**Target Journal:** Digital Signal Processing (Elsevier)
-
-## Overview
-
-This repository contains the implementation of SSM-AF, a novel adaptive filtering framework that integrates State Space Models (SSMs) with traditional adaptive filtering theory for signal enhancement tasks.
+Target journal: **Digital Signal Processing** (Elsevier).
 
 ## Project Structure
 
+```text
+code/
+├── models/
+│   └── ssm_af.py          # LISTA, OMP, LASSO, LMS, NLMS implementations
+├── data/
+│   └── generate.py         # Synthetic sparse channel data generation
+├── run_experiments.py       # Original experiments (SNR, sparsity, channel length, convergence)
+├── run_revision_experiments.py  # Revision experiments (ablation, generalization, runtime, ITU)
+├── train.py                 # Training script for SSM-AF model
+├── train_sparse.py          # Sparse channel training
+├── eval.py                  # Evaluation utilities
+└── generate_paper_figures.py  # Figure generation for paper
 ```
-ssm-adaptive-filter/
-├── main.tex                # Paper LaTeX source
-├── references.bib          # Bibliography
-├── figures/                # Paper figures
-├── code/                   # Experiment code
-│   ├── models/             # Model implementations
-│   ├── data/               # Data generation/loading
-│   └── utils/              # Utility functions
-├── els-cas-templates/      # Elsevier CAS LaTeX template
-└── README.md
-```
 
-## Tasks
-
-- Echo Cancellation
-- Channel Equalization
-- Noise Reduction
-
-## Baselines
-
-| Method | Type |
-|--------|------|
-| LMS / NLMS | Classical Adaptive |
-| RLS | Classical Adaptive |
-| Kalman Filter | Optimal Estimation |
-| DeepFilterNet | Deep Learning SOTA |
-
-## Requirements
-
-- Python 3.9+
-- PyTorch 2.0+
-- NumPy
-- SciPy
-- Matplotlib
-- pesq, pystoi (for audio evaluation)
-
-## Usage
+## Quick Start
 
 ```bash
-# Train SSM-AF model
-python code/train.py --task echo_cancellation
-
-# Evaluate
-python code/eval.py --task echo_cancellation --checkpoint checkpoints/best.pt
+pip install -r requirements.txt
 ```
 
-## License
+## Running Experiments
 
-For academic research use only.
+### Original experiments (Tables 1-4 in paper)
+
+```bash
+cd code
+python run_experiments.py --experiment all --device cuda --num_test 100
+```
+
+Individual experiments:
+
+```bash
+python run_experiments.py --experiment snr          # NMSE vs SNR
+python run_experiments.py --experiment sparsity     # NMSE vs Sparsity
+python run_experiments.py --experiment channellen   # NMSE vs Channel Length
+python run_experiments.py --experiment convergence  # NMSE vs Layers
+```
+
+### Revision experiments (ablation, generalization, runtime, ITU)
+
+```bash
+cd code
+python run_revision_experiments.py --experiment all --seeds 5 --device cuda
+```
+
+Individual revision experiments:
+
+```bash
+python run_revision_experiments.py --experiment ablation       # Ablation study
+python run_revision_experiments.py --experiment gen_sparsity   # Sparsity mismatch
+python run_revision_experiments.py --experiment gen_snr        # SNR mismatch
+python run_revision_experiments.py --experiment runtime        # Inference time
+python run_revision_experiments.py --experiment itu            # ITU channel models
+python run_revision_experiments.py --experiment generalization # All generalization
+```
+
+Output is saved to `code/res/revision/` (JSON + PDF).
+
+## Methods
+
+| Method | Type | Sparsity-aware | Requires training |
+| --- | --- | :-: | :-: |
+| LMS | Adaptive filter | No | No |
+| NLMS | Adaptive filter | No | No |
+| OMP | Greedy CS | Yes | No |
+| LASSO | Convex relaxation | Yes | No |
+| LISTA | Deep unfolding | Yes | Yes |
