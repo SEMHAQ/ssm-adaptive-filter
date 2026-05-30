@@ -209,7 +209,12 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     print("Evaluating SSM-AF...")
     model = SSMAF(filter_length=filter_length, hidden_dim=32).to(device)
     if checkpoint and os.path.exists(checkpoint):
-        model.load_state_dict(torch.load(checkpoint, map_location=device))
+        ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
+        # Handle both checkpoint formats: full dict or direct state_dict
+        if 'model_state_dict' in ckpt:
+            model.load_state_dict(ckpt['model_state_dict'])
+        else:
+            model.load_state_dict(ckpt)
         print(f"  Loaded checkpoint: {checkpoint}")
 
     x_dev, d_dev = x.to(device), d.to(device)
