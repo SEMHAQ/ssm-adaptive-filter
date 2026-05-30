@@ -49,12 +49,10 @@ def generate_echo_cancellation_data(
     # Convolve with echo path
     d = torch.zeros(num_samples, seq_len)
     for i in range(num_samples):
-        echo = torch.nn.functional.conv1d(
-            x[i:i+1].unsqueeze(0),
-            h[i:i+1].unsqueeze(0).unsqueeze(0),
-            padding=filter_length - 1
-        ).squeeze()[:seq_len]
-        d[i] = echo
+        x_i = x[i].unsqueeze(0).unsqueeze(0)   # (1, 1, seq_len)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)   # (1, 1, filter_length)
+        echo = torch.nn.functional.conv1d(x_i, h_i, padding=filter_length - 1)
+        d[i] = echo.squeeze()[:seq_len]
 
     # Add noise
     noise_power = 10 ** (-snr_db / 10)
@@ -97,11 +95,9 @@ def generate_channel_equalization_data(
     # Pass through channel
     x = torch.zeros(num_samples, seq_len)
     for i in range(num_samples):
-        x[i] = torch.nn.functional.conv1d(
-            s[i:i+1].unsqueeze(0),
-            channel[i:i+1].unsqueeze(0).unsqueeze(0),
-            padding=channel_length - 1
-        ).squeeze()[:seq_len]
+        s_i = s[i].unsqueeze(0).unsqueeze(0)       # (1, 1, seq_len)
+        ch_i = channel[i].unsqueeze(0).unsqueeze(0) # (1, 1, channel_length)
+        x[i] = torch.nn.functional.conv1d(s_i, ch_i, padding=channel_length - 1).squeeze()[:seq_len]
 
     # Add noise
     noise_power = 10 ** (-snr_db / 10)
@@ -165,11 +161,9 @@ def generate_noise_reduction_data(
     noise_path = torch.randn(num_samples, 11) * 0.3
     v1 = torch.zeros(num_samples, seq_len)
     for i in range(num_samples):
-        v1[i] = torch.nn.functional.conv1d(
-            v2[i:i+1].unsqueeze(0),
-            noise_path[i:i+1].unsqueeze(0).unsqueeze(0),
-            padding=5
-        ).squeeze()[:seq_len]
+        v2_i = v2[i].unsqueeze(0).unsqueeze(0)           # (1, 1, seq_len)
+        np_i = noise_path[i].unsqueeze(0).unsqueeze(0)   # (1, 1, 11)
+        v1[i] = torch.nn.functional.conv1d(v2_i, np_i, padding=5).squeeze()[:seq_len]
 
     # Mix signal and noise
     noise_power = 10 ** (-snr_db / 10)
