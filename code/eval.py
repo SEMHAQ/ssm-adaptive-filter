@@ -24,7 +24,8 @@ from data.generate import (
     generate_nonstationary_echo_data,
     generate_robust_echo_data,
     generate_nonlinear_echo_data,
-    generate_loudspeaker_echo_data
+    generate_loudspeaker_echo_data,
+    _generate_itu_echo_path
 )
 
 
@@ -194,11 +195,17 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
         w_true = h.squeeze().numpy()
         num_changes = 0
     elif task == 'loudspeaker_echo':
-        x, d, h = generate_loudspeaker_echo_data(
-            num_samples=1, seq_len=seq_len, filter_length=filter_length,
-            nl_type='soft_clip', nl_params={'gain': 10.0}
-        )
-        w_true = h.squeeze().numpy()
+        # Use same fixed echo path as training (same seed)
+        torch.manual_seed(42)
+        h = _generate_itu_echo_path(1, filter_length).to(device)
+        torch.manual_seed(123)  # Different seed for x (unseen data)
+        x = torch.randn(1, seq_len).to(device)
+        x_conv = torch.nn.functional.conv1d(
+            x.unsqueeze(0), h.unsqueeze(0), padding=filter_length - 1
+        ).squeeze()[:seq_len]
+        d = torch.tanh(x_conv * 10.0).unsqueeze(0)
+        x = x.unsqueeze(0)
+        w_true = h.squeeze().cpu().numpy()
         num_changes = 0
     else:
         raise ValueError(f"Unknown task: {task}")

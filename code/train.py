@@ -23,7 +23,8 @@ from data.generate import (
     generate_nonstationary_echo_data,
     generate_robust_echo_data,
     generate_nonlinear_echo_data,
-    generate_loudspeaker_echo_data
+    generate_loudspeaker_echo_data,
+    _generate_itu_echo_path
 )
 
 
@@ -108,16 +109,28 @@ def train_ssm_af(
     best_loss = float('inf')
     history = {'train_loss': [], 'val_loss': []}
 
-    # For loudspeaker_echo: use fixed dataset so NN can learn consistent patterns
+    # For loudspeaker_echo: fixed echo path + fixed dataset
+    # Real scenario: one room, one device, offline training
     if task == 'loudspeaker_echo':
         num_train_samples = 32
-        x_fixed, d_fixed, h_fixed = generate_loudspeaker_echo_data(
-            num_samples=num_train_samples, seq_len=seq_len,
-            filter_length=filter_length, nl_type='soft_clip',
-            nl_params={'gain': 10.0}
-        )
-        x_fixed, d_fixed = x_fixed.to(device), d_fixed.to(device)
-        print(f"Fixed dataset: {num_train_samples} samples, soft_clip gain=10")
+        # Generate ONE fixed echo path (deterministic seed)
+        torch.manual_seed(42)
+        h_fixed = _generate_itu_echo_path(1, filter_length).to(device)
+        # Generate data with the SAME echo path every time
+        x_fixed_list, d_fixed_list = [], []
+        for _ in range(num_train_samples):
+            x_i = torch.randn(1, seq_len).to(device)
+            # Linear convolution with fixed path
+            x_conv = torch.nn.functional.conv1d(
+                x_i.unsqueeze(0), h_fixed.unsqueeze(0), padding=filter_length - 1
+            ).squeeze()[:seq_len]
+            # Nonlinear: soft clipping
+            d_i = torch.tanh(x_conv * 10.0)
+            x_fixed_list.append(x_i.squeeze())
+            d_fixed_list.append(d_i)
+        x_fixed = torch.stack(x_fixed_list)
+        d_fixed = torch.stack(d_fixed_list)
+        print(f"Fixed echo path, {num_train_samples} samples, soft_clip gain=10")
 
     for epoch in range(epochs):
         model.train()
