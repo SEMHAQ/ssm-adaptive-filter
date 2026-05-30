@@ -196,7 +196,7 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     elif task == 'loudspeaker_echo':
         x, d, h = generate_loudspeaker_echo_data(
             num_samples=1, seq_len=seq_len, filter_length=filter_length,
-            nl_type='hard_clip', nl_params={'threshold': 0.3}
+            nl_type='soft_clip', nl_params={'gain': 10.0}
         )
         w_true = h.squeeze().numpy()
         num_changes = 0

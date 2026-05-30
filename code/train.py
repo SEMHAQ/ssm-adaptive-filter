@@ -83,7 +83,11 @@ def train_ssm_af(
             hidden_dim=hidden_dim
         ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    if task == 'loudspeaker_echo':
+        # Higher LR for NN component - it needs to learn fast before NLMS adapts
+        optimizer = optim.Adam(model.parameters(), lr=1e-2, weight_decay=1e-4)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
 
     # Learning rate scheduler with warmup
     warmup_epochs = min(10, epochs // 5)
@@ -103,6 +107,17 @@ def train_ssm_af(
 
     best_loss = float('inf')
     history = {'train_loss': [], 'val_loss': []}
+
+    # For loudspeaker_echo: use fixed dataset so NN can learn consistent patterns
+    if task == 'loudspeaker_echo':
+        num_train_samples = 32
+        x_fixed, d_fixed, h_fixed = generate_loudspeaker_echo_data(
+            num_samples=num_train_samples, seq_len=seq_len,
+            filter_length=filter_length, nl_type='soft_clip',
+            nl_params={'gain': 10.0}
+        )
+        x_fixed, d_fixed = x_fixed.to(device), d_fixed.to(device)
+        print(f"Fixed dataset: {num_train_samples} samples, soft_clip gain=10")
 
     for epoch in range(epochs):
         model.train()
@@ -138,11 +153,9 @@ def train_ssm_af(
                 filter_length=filter_length, nonlinearity='pure_nonlinear'
             )
         elif task == 'loudspeaker_echo':
-            x, d, h = generate_loudspeaker_echo_data(
-                num_samples=batch_size, seq_len=seq_len,
-                filter_length=filter_length, nl_type='hard_clip',
-                nl_params={'threshold': 0.3}
-            )
+            # Use random subset from fixed dataset
+            idx = torch.randperm(num_train_samples)[:batch_size]
+            x, d = x_fixed[idx], d_fixed[idx]
         else:
             raise ValueError(f"Unknown task: {task}")
 
@@ -259,7 +272,7 @@ def evaluate_baselines(task: str, filter_length: int = 64, seq_len: int = 4000):
     elif task == 'loudspeaker_echo':
         x, d, h = generate_loudspeaker_echo_data(
             num_samples=1, seq_len=seq_len, filter_length=filter_length,
-            nl_type='hard_clip', nl_params={'threshold': 0.3}
+            nl_type='soft_clip', nl_params={'gain': 10.0}
         )
     else:
         raise ValueError(f"Unknown task: {task}")
