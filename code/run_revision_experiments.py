@@ -854,57 +854,12 @@ def exp_channel_length(save_dir, device, seeds=5, num_test=200):
             seed_results['LISTA'].append(nmse_lista)
             print(f"    LISTA: {nmse_lista:.2f} dB")
 
-            # Baselines (validation-optimized)
-            # LMS
-            lms_step, best_lms = None, float('inf')
-            for step in [0.01, 0.05, 0.1, 0.2, 0.5]:
-                lms = LMSFilter(N, step)
-                h_lms = torch.zeros_like(h_test)
-                for i in range(num_test):
-                    h_lms[i] = lms.estimate(x_test[i], d_test[i])
-                nmse_lms = compute_nmse_db(h_lms, h_test)
-                if nmse_lms < best_lms:
-                    best_lms = nmse_lms
-                    lms_step = step
-            seed_results['LMS'].append(best_lms)
-            print(f"    LMS (step={lms_step}): {best_lms:.2f} dB")
-
-            # NLMS
-            nlms_step, best_nlms = None, float('inf')
-            for step in [0.01, 0.05, 0.1, 0.2, 0.5]:
-                nlms = NLMSFilter(N, step)
-                h_nlms = torch.zeros_like(h_test)
-                for i in range(num_test):
-                    h_nlms[i] = nlms.estimate(x_test[i], d_test[i])
-                nmse_nlms = compute_nmse_db(h_nlms, h_test)
-                if nmse_nlms < best_nlms:
-                    best_nlms = nmse_nlms
-                    nlms_step = step
-            seed_results['NLMS'].append(best_nlms)
-            print(f"    NLMS (step={nlms_step}): {best_nlms:.2f} dB")
-
-            # OMP
-            omp = OMPFilter(N, K)
-            h_omp = torch.zeros_like(h_test)
-            for i in range(num_test):
-                h_omp[i] = omp.estimate(x_test[i], d_test[i])
-            nmse_omp = compute_nmse_db(h_omp, h_test)
-            seed_results['OMP'].append(nmse_omp)
-            print(f"    OMP: {nmse_omp:.2f} dB")
-
-            # LASSO
-            lasso_lambda, best_lasso = None, float('inf')
-            for lam in [0.001, 0.005, 0.01, 0.05, 0.1]:
-                lasso = LASSOFilter(N, lam)
-                h_lasso = torch.zeros_like(h_test)
-                for i in range(num_test):
-                    h_lasso[i] = lasso.estimate(x_test[i], d_test[i])
-                nmse_lasso = compute_nmse_db(h_lasso, h_test)
-                if nmse_lasso < best_lasso:
-                    best_lasso = nmse_lasso
-                    lasso_lambda = lam
-            seed_results['LASSO'].append(best_lasso)
-            print(f"    LASSO (λ={lasso_lambda}): {best_lasso:.2f} dB")
+            # Baselines (validation-optimized, same as evaluate_baselines)
+            base = evaluate_baselines(x_test, d_test, h_test, N, K)
+            for name in ['LMS', 'NLMS', 'OMP', 'LASSO']:
+                seed_results[name].append(base[name])
+            print(f"    LMS: {base['LMS']:.2f} dB, NLMS: {base['NLMS']:.2f} dB, "
+                  f"OMP: {base['OMP']:.2f} dB, LASSO: {base['LASSO']:.2f} dB")
 
         # Compute mean ± std
         all_results[str(N)] = {}
