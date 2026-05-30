@@ -12,6 +12,7 @@ import numpy as np
 import argparse
 import os
 import json
+import time
 from pathlib import Path
 
 from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter
@@ -75,12 +76,15 @@ def train_ssm_af(
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     print(f"Training on: {device}")
     print(f"Task: {task}")
+    print(f"Config: epochs={epochs}, batch={batch_size}, seq_len={seq_len}, filter_len={filter_length}")
+    print(f"{'='*60}")
 
     best_loss = float('inf')
     history = {'train_loss': [], 'val_loss': []}
 
     for epoch in range(epochs):
         model.train()
+        t_start = time.time()
 
         # Generate training data (on-the-fly)
         if task == 'echo_cancellation':
@@ -119,10 +123,11 @@ def train_ssm_af(
             mse_db = 10 * torch.log10(loss + 1e-10).item()
             erle = compute_erle(d, e)
 
+        elapsed = time.time() - t_start
         history['train_loss'].append(mse_db)
 
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | MSE: {mse_db:.2f} dB | ERLE: {erle:.2f} dB")
+        # Print every epoch so user can see progress
+        print(f"Epoch {epoch+1:3d}/{epochs} | MSE: {mse_db:7.2f} dB | ERLE: {erle:7.2f} dB | {elapsed:.1f}s")
 
         # Save best model
         if loss.item() < best_loss:
@@ -204,8 +209,8 @@ def main():
     parser.add_argument('--d_state', type=int, default=16, help='SSM state dimension')
     parser.add_argument('--num_layers', type=int, default=2, help='Number of SSM layers')
     parser.add_argument('--epochs', type=int, default=100, help='Training epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
-    parser.add_argument('--seq_len', type=int, default=4000, help='Sequence length')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
+    parser.add_argument('--seq_len', type=int, default=1000, help='Sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--device', type=str, default='cuda', help='Device')
     parser.add_argument('--save_dir', type=str, default='checkpoints', help='Save directory')
