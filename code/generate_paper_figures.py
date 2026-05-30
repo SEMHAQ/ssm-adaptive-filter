@@ -84,7 +84,7 @@ def extract_xy(results: dict, method: str):
 
 
 def plot_nmse_vs_x(data: dict, x_label: str, title_suffix: str, filename: str,
-                   legend_loc: str = "best", y_pad: float = 0.0):
+                   legend_loc: str = "best", y_pad: float = 0.0, ncol: int = 1):
     """Generic NMSE-vs-something plot for all 5 methods."""
     fig, ax = plt.subplots(figsize=(8, 5))
 
@@ -109,7 +109,7 @@ def plot_nmse_vs_x(data: dict, x_label: str, title_suffix: str, filename: str,
     if y_pad > 0:
         ymin, ymax = ax.get_ylim()
         ax.set_ylim(ymin, ymax + y_pad)
-    ax.legend(loc=legend_loc, fontsize=11)
+    ax.legend(loc=legend_loc, fontsize=11, ncol=ncol)
 
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / filename, bbox_inches="tight")
@@ -135,8 +135,9 @@ plot_nmse_vs_x(
     x_label="Sparsity K",
     title_suffix="Sparsity",
     filename="fig_nmse_vs_sparsity.pdf",
-    legend_loc="upper right",
-    y_pad=0.5,
+    legend_loc="upper center",
+    y_pad=0.8,
+    ncol=5,
 )
 
 # ---------------------------------------------------------------------------
