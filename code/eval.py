@@ -188,7 +188,7 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     elif task == 'nonlinear_echo':
         x, d, h = generate_nonlinear_echo_data(
             num_samples=1, seq_len=seq_len, filter_length=filter_length,
-            nonlinearity='clip', nl_strength=0.95
+            nonlinearity='pure_nonlinear'
         )
         w_true = h.squeeze().numpy()
         num_changes = 0

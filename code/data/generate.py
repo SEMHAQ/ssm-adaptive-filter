@@ -324,6 +324,10 @@ def generate_nonlinear_echo_data(
     elif nonlinearity == 'sigmoid':
         # Sigmoid saturation
         d = (1 - nl_strength) * d_linear + nl_strength * torch.sigmoid(d_linear * 3) - 0.5
+    elif nonlinearity == 'pure_nonlinear':
+        # Pure nonlinear mapping (no linear component)
+        # NLMS cannot handle this at all
+        d = torch.tanh(x * 3) * 0.5 + torch.sin(x * 5) * 0.3
     else:
         d = d_linear
 
