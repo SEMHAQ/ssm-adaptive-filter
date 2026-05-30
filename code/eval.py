@@ -16,14 +16,15 @@ import argparse
 import os
 from pathlib import Path
 
-from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter
+from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter, HybridNLMSNN
 from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
     generate_noise_reduction_data,
     generate_nonstationary_echo_data,
     generate_robust_echo_data,
-    generate_nonlinear_echo_data
+    generate_nonlinear_echo_data,
+    generate_loudspeaker_echo_data
 )
 
 
@@ -192,6 +193,13 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
         )
         w_true = h.squeeze().numpy()
         num_changes = 0
+    elif task == 'loudspeaker_echo':
+        x, d, h = generate_loudspeaker_echo_data(
+            num_samples=1, seq_len=seq_len, filter_length=filter_length,
+            nl_type='hard_clip', nl_params={'threshold': 0.3}
+        )
+        w_true = h.squeeze().numpy()
+        num_changes = 0
     else:
         raise ValueError(f"Unknown task: {task}")
 
@@ -221,9 +229,15 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     erle_rls = 10 * np.log10(np.mean(d.numpy()**2) / (np.mean(e_rls.numpy()**2) + 1e-10))
     results['RLS'] = {'mse_curve': mse_rls, 'erle_db': erle_rls, 'final_mse_db': mse_rls[-1]}
 
-    # --- SSM-AF ---
-    print("Evaluating SSM-AF...")
-    model = SSMAF(filter_length=filter_length, hidden_dim=64).to(device)
+    # --- SSM-AF / Hybrid-NLMS-NN ---
+    if task == 'loudspeaker_echo':
+        print("Evaluating Hybrid-NLMS-NN...")
+        model = HybridNLMSNN(filter_length=filter_length, mu=0.5, context_len=16, nl_hidden_dim=64).to(device)
+        method_name = 'Hybrid-NLMS-NN'
+    else:
+        print("Evaluating SSM-AF...")
+        model = SSMAF(filter_length=filter_length, hidden_dim=64).to(device)
+        method_name = 'SSM-AF'
     if checkpoint and os.path.exists(checkpoint):
         ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
         # Handle both checkpoint formats: full dict or direct state_dict
@@ -243,7 +257,7 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     e_ssm_np = e_ssm.squeeze().cpu().numpy()
     mse_ssm = 10 * np.log10(np.cumsum(e_ssm_np**2) / np.arange(1, seq_len+1) + 1e-10)
     erle_ssm = 10 * np.log10(np.mean(d.numpy()**2) / (np.mean(e_ssm_np**2) + 1e-10))
-    results['SSM-AF'] = {'mse_curve': mse_ssm, 'erle_db': erle_ssm, 'final_mse_db': mse_ssm[-1]}
+    results[method_name] = {'mse_curve': mse_ssm, 'erle_db': erle_ssm, 'final_mse_db': mse_ssm[-1]}
 
     # Print summary table
     print(f"\n{'='*60}")
@@ -302,7 +316,7 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate SSM-AF model')
     parser.add_argument('--task', type=str, default='all',
                         choices=['echo_cancellation', 'channel_equalization', 'noise_reduction',
-                                 'nonstationary_echo', 'robust_echo', 'nonlinear_echo', 'all'])
+                                 'nonstationary_echo', 'robust_echo', 'nonlinear_echo', 'loudspeaker_echo', 'all'])
     parser.add_argument('--filter_length', type=int, default=64)
     parser.add_argument('--seq_len', type=int, default=8000)
     parser.add_argument('--checkpoint', type=str, default=None)
@@ -311,7 +325,7 @@ def main():
 
     args = parser.parse_args()
 
-    tasks = ['echo_cancellation', 'channel_equalization', 'noise_reduction', 'nonstationary_echo', 'robust_echo', 'nonlinear_echo'] if args.task == 'all' else [args.task]
+    tasks = ['echo_cancellation', 'channel_equalization', 'noise_reduction', 'nonstationary_echo', 'robust_echo', 'nonlinear_echo', 'loudspeaker_echo'] if args.task == 'all' else [args.task]
 
     all_results = {}
     for task in tasks:
