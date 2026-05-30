@@ -487,9 +487,9 @@ class TCNFilter(nn.Module):
         super().__init__()
         self.filter_length = filter_length
 
-        # Input projection: x(n) + d(n) -> hidden
+        # Input projection: x(n) -> hidden
         self.input_proj = nn.Sequential(
-            nn.Conv1d(2, hidden_dim, 1),
+            nn.Conv1d(1, hidden_dim, 1),
             nn.ReLU()
         )
 
@@ -510,25 +510,25 @@ class TCNFilter(nn.Module):
         """
         Args:
             x: (B, seq_len) - input signal
-            d: (B, seq_len) - desired signal
+            d: (B, seq_len) - desired signal (used only for loss, not input)
         Returns:
-            y: (B, seq_len) - filter output (d - e)
-            e: (B, seq_len) - predicted error signal
+            y: (B, seq_len) - predicted echo signal
+            e: (B, seq_len) - error signal (d - y)
             w_history: dummy for compatibility
         """
-        # Stack x and d as channels: (B, 2, seq_len)
-        inp = torch.stack([x, d], dim=1)
+        # Input: only x (no access to d!)
+        inp = x.unsqueeze(1)  # (B, 1, seq_len)
 
         # TCN forward
         h = self.input_proj(inp)
         for block in self.tcn_blocks:
             h = block(h)
 
-        # Predict error
-        e = self.output_proj(h).squeeze(1)  # (B, seq_len)
+        # Predict echo signal y
+        y = self.output_proj(h).squeeze(1)  # (B, seq_len)
 
-        # Filter output: y = d - e
-        y = d - e
+        # Error: d - y
+        e = d - y
 
         # Dummy w_history
         w_history = torch.zeros(x.shape[0], x.shape[1], self.filter_length,
