@@ -268,7 +268,13 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     with open(os.path.join(task_dir, 'eval_results.json'), 'w') as f:
         json.dump(results_save, f, indent=2)
 
-    print(f"\nResults saved to {task_dir}/")
+    # Also save to tracked results/ directory
+    results_dir = os.path.join('results', task)
+    os.makedirs(results_dir, exist_ok=True)
+    with open(os.path.join(results_dir, 'eval_results.json'), 'w') as f:
+        json.dump(results_save, f, indent=2)
+
+    print(f"\nResults saved to {task_dir}/ and {results_dir}/")
     return results
 
 
