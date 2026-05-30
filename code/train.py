@@ -70,7 +70,8 @@ def train_ssm_af(
     # Initialize model
     model = SSMAF(
         filter_length=filter_length,
-        hidden_dim=hidden_dim
+        hidden_dim=hidden_dim,
+        context_len=32
     ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
