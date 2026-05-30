@@ -20,7 +20,8 @@ from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter
 from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
-    generate_noise_reduction_data
+    generate_noise_reduction_data,
+    generate_nonstationary_echo_data
 )
 
 
@@ -155,16 +156,26 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
             num_samples=1, seq_len=seq_len, filter_length=filter_length
         )
         w_true = h.squeeze().numpy()
+        num_changes = 0
     elif task == 'channel_equalization':
         x, d, ch = generate_channel_equalization_data(
             num_samples=1, seq_len=seq_len
         )
         w_true = ch.squeeze().numpy()
+        num_changes = 0
     elif task == 'noise_reduction':
         x, d, s = generate_noise_reduction_data(
             num_samples=1, seq_len=seq_len
         )
         w_true = None
+        num_changes = 0
+    elif task == 'nonstationary_echo':
+        x, d, h_list = generate_nonstationary_echo_data(
+            num_samples=1, seq_len=seq_len, filter_length=filter_length,
+            num_changes=3
+        )
+        w_true = h_list[0].squeeze().numpy()  # First segment's echo path
+        num_changes = 3
     else:
         raise ValueError(f"Unknown task: {task}")
 
@@ -232,6 +243,23 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
 
     # Save results
     results_save = {k: {'erle_db': v['erle_db'], 'final_mse_db': v['final_mse_db']} for k, v in results.items()}
+
+    # For non-stationary task, compute per-segment MSE to show tracking ability
+    if task == 'nonstationary_echo' and num_changes > 0:
+        segment_len = seq_len // (num_changes + 1)
+        segment_results = {}
+        for method, data in results.items():
+            mse_curve = data['mse_curve']
+            segment_mse = []
+            for seg_idx in range(num_changes + 1):
+                start = seg_idx * segment_len
+                end = min((seg_idx + 1) * segment_len, len(mse_curve))
+                if start < len(mse_curve):
+                    seg_mse = mse_curve[end - 1]  # Final MSE of this segment
+                    segment_mse.append(float(seg_mse))
+            segment_results[method] = segment_mse
+        results_save['per_segment_mse'] = segment_results
+
     with open(os.path.join(task_dir, 'eval_results.json'), 'w') as f:
         json.dump(results_save, f, indent=2)
 
@@ -242,7 +270,8 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
 def main():
     parser = argparse.ArgumentParser(description='Evaluate SSM-AF model')
     parser.add_argument('--task', type=str, default='all',
-                        choices=['echo_cancellation', 'channel_equalization', 'noise_reduction', 'all'])
+                        choices=['echo_cancellation', 'channel_equalization', 'noise_reduction',
+                                 'nonstationary_echo', 'all'])
     parser.add_argument('--filter_length', type=int, default=64)
     parser.add_argument('--seq_len', type=int, default=8000)
     parser.add_argument('--checkpoint', type=str, default=None)
@@ -251,7 +280,7 @@ def main():
 
     args = parser.parse_args()
 
-    tasks = ['echo_cancellation', 'channel_equalization', 'noise_reduction'] if args.task == 'all' else [args.task]
+    tasks = ['echo_cancellation', 'channel_equalization', 'noise_reduction', 'nonstationary_echo'] if args.task == 'all' else [args.task]
 
     all_results = {}
     for task in tasks:

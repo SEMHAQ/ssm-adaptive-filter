@@ -19,7 +19,8 @@ from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter
 from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
-    generate_noise_reduction_data
+    generate_noise_reduction_data,
+    generate_nonstationary_echo_data
 )
 
 
@@ -109,6 +110,11 @@ def train_ssm_af(
         elif task == 'noise_reduction':
             x, d, s = generate_noise_reduction_data(
                 num_samples=batch_size, seq_len=seq_len
+            )
+        elif task == 'nonstationary_echo':
+            x, d, h_list = generate_nonstationary_echo_data(
+                num_samples=batch_size, seq_len=seq_len,
+                filter_length=filter_length, num_changes=3
             )
         else:
             raise ValueError(f"Unknown task: {task}")
@@ -208,6 +214,13 @@ def evaluate_baselines(task: str, filter_length: int = 64, seq_len: int = 4000):
         x, d, s = generate_noise_reduction_data(
             num_samples=1, seq_len=seq_len
         )
+    elif task == 'nonstationary_echo':
+        x, d, h_list = generate_nonstationary_echo_data(
+            num_samples=1, seq_len=seq_len, filter_length=filter_length,
+            num_changes=3
+        )
+    else:
+        raise ValueError(f"Unknown task: {task}")
 
     x_np = x.squeeze().numpy()
     d_np = d.squeeze().numpy()
@@ -244,7 +257,8 @@ def evaluate_baselines(task: str, filter_length: int = 64, seq_len: int = 4000):
 def main():
     parser = argparse.ArgumentParser(description='Train SSM-AF model')
     parser.add_argument('--task', type=str, default='echo_cancellation',
-                        choices=['echo_cancellation', 'channel_equalization', 'noise_reduction'],
+                        choices=['echo_cancellation', 'channel_equalization', 'noise_reduction',
+                                 'nonstationary_echo'],
                         help='Adaptive filtering task')
     parser.add_argument('--filter_length', type=int, default=64, help='Filter length')
     parser.add_argument('--hidden_dim', type=int, default=32, help='Hidden dimension')

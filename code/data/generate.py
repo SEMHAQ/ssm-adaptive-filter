@@ -62,6 +62,66 @@ def generate_echo_cancellation_data(
     return x, d, h
 
 
+def generate_nonstationary_echo_data(
+    num_samples: int = 10000,
+    seq_len: int = 8000,
+    filter_length: int = 64,
+    snr_db: float = 20.0,
+    num_changes: int = 3
+) -> Tuple[torch.Tensor, torch.Tensor, list]:
+    """
+    Generate non-stationary echo cancellation data.
+
+    The echo path changes abruptly `num_changes` times during the signal.
+    This simulates real scenarios like:
+    - Speaker moves during a call
+    - Room acoustics change (door opens/closes)
+    - Network path changes
+
+    Traditional LMS/NLMS struggle to track these changes.
+    A learned model can potentially adapt faster.
+
+    Args:
+        num_samples: Number of sequences
+        seq_len: Sequence length
+        filter_length: Filter length
+        snr_db: Signal-to-noise ratio
+        num_changes: Number of echo path changes
+
+    Returns:
+        x: (num_samples, seq_len) - input signal
+        d: (num_samples, seq_len) - desired signal (with changing echo)
+        h_list: list of (num_samples, filter_length) - echo paths at each segment
+    """
+    x = torch.randn(num_samples, seq_len)
+
+    # Generate multiple echo paths
+    h_list = [_generate_itu_echo_path(num_samples, filter_length) for _ in range(num_changes + 1)]
+
+    # Determine change points (evenly spaced)
+    segment_len = seq_len // (num_changes + 1)
+    change_points = [i * segment_len for i in range(1, num_changes + 1)]
+
+    # Generate desired signal with changing echo path
+    d = torch.zeros(num_samples, seq_len)
+    for i in range(num_samples):
+        segments = []
+        start = 0
+        for seg_idx, end in enumerate(change_points + [seq_len]):
+            x_seg = x[i, start:end].unsqueeze(0).unsqueeze(0)
+            h_seg = h_list[seg_idx][i].unsqueeze(0).unsqueeze(0)
+            echo_seg = torch.nn.functional.conv1d(x_seg, h_seg, padding=filter_length - 1)
+            segments.append(echo_seg.squeeze()[:end - start])
+            start = end
+        d[i] = torch.cat(segments)
+
+    # Add noise
+    noise_power = 10 ** (-snr_db / 10)
+    d = d + torch.randn(num_samples, seq_len) * np.sqrt(noise_power)
+
+    return x, d, h_list
+
+
 def generate_channel_equalization_data(
     num_samples: int = 10000,
     seq_len: int = 8000,
