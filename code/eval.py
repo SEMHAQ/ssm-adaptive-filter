@@ -199,12 +199,13 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
         torch.manual_seed(42)
         h = _generate_itu_echo_path(1, filter_length).to(device)
         torch.manual_seed(123)  # Different seed for x (unseen data)
-        x = torch.randn(1, seq_len).to(device)
+        x_1d = torch.randn(seq_len).to(device)
         x_conv = torch.nn.functional.conv1d(
-            x.unsqueeze(0), h.unsqueeze(0), padding=filter_length - 1
+            x_1d.unsqueeze(0).unsqueeze(0), h.squeeze().unsqueeze(0).unsqueeze(0),
+            padding=filter_length - 1
         ).squeeze()[:seq_len]
-        d = torch.tanh(x_conv * 10.0).unsqueeze(0)
-        x = x.unsqueeze(0)
+        d = torch.tanh(x_conv * 3.0).unsqueeze(0)  # (1, seq_len)
+        x = x_1d.unsqueeze(0)  # (1, seq_len) - 2D
         # Move to CPU for baselines (numpy requires CPU)
         x, d = x.cpu(), d.cpu()
         w_true = h.squeeze().cpu().numpy()
