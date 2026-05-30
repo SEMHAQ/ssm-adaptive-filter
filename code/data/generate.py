@@ -264,6 +264,75 @@ def _generate_random_channel(num_samples: int, length: int) -> torch.Tensor:
     return channel
 
 
+def generate_robust_echo_data(
+    num_samples: int = 10000,
+    seq_len: int = 8000,
+    filter_length: int = 64,
+    snr_db: float = 20.0,
+    outlier_prob: float = 0.01,
+    noise_type: str = 'colored'
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Generate echo cancellation data with challenging conditions.
+
+    This creates scenarios where traditional methods struggle:
+    1. Colored noise (violates white noise assumption of NLMS/RLS)
+    2. Outliers/spikes (impulse干扰)
+    3. Non-Gaussian noise
+
+    Args:
+        num_samples: Number of sequences
+        seq_len: Sequence length
+        filter_length: Filter length
+        snr_db: Signal-to-noise ratio
+        outlier_prob: Probability of outlier at each sample
+        noise_type: 'white', 'colored', or 'impulsive'
+
+    Returns:
+        x: (num_samples, seq_len) - input signal
+        d: (num_samples, seq_len) - desired signal
+        h: (num_samples, filter_length) - true echo path
+    """
+    x = torch.randn(num_samples, seq_len)
+    h = _generate_itu_echo_path(num_samples, filter_length)
+
+    # Convolve with echo path
+    d = torch.zeros(num_samples, seq_len)
+    for i in range(num_samples):
+        x_i = x[i].unsqueeze(0).unsqueeze(0)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)
+        echo = torch.nn.functional.conv1d(x_i, h_i, padding=filter_length - 1)
+        d[i] = echo.squeeze()[:seq_len]
+
+    # Generate challenging noise
+    if noise_type == 'colored':
+        # Colored noise (low-pass filtered white noise)
+        noise = torch.randn(num_samples, seq_len)
+        # Simple low-pass filter
+        kernel = torch.ones(1, 1, 11) / 11
+        for i in range(num_samples):
+            noise[i] = torch.nn.functional.conv1d(
+                noise[i].unsqueeze(0).unsqueeze(0),
+                kernel, padding=5
+            ).squeeze()[:seq_len]
+    elif noise_type == 'impulsive':
+        # Impulsive noise (sparse large spikes)
+        noise = torch.randn(num_samples, seq_len) * 0.1
+        mask = torch.rand(num_samples, seq_len) < outlier_prob
+        noise[mask] = torch.randn(mask.sum()) * 10  # Large spikes
+    else:
+        noise = torch.randn(num_samples, seq_len)
+
+    # Scale noise to desired SNR
+    noise_power = 10 ** (-snr_db / 10)
+    signal_power = (d ** 2).mean()
+    noise = noise * torch.sqrt(signal_power * noise_power / (noise.var() + 1e-10))
+
+    d = d + noise
+
+    return x, d, h
+
+
 if __name__ == "__main__":
     # Test data generation
     print("Generating echo cancellation data...")
