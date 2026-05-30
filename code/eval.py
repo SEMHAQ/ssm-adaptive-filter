@@ -205,6 +205,8 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
         ).squeeze()[:seq_len]
         d = torch.tanh(x_conv * 10.0).unsqueeze(0)
         x = x.unsqueeze(0)
+        # Move to CPU for baselines (numpy requires CPU)
+        x, d = x.cpu(), d.cpu()
         w_true = h.squeeze().cpu().numpy()
         num_changes = 0
     else:
@@ -236,18 +238,17 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     erle_rls = 10 * np.log10(np.mean(d.numpy()**2) / (np.mean(e_rls.numpy()**2) + 1e-10))
     results['RLS'] = {'mse_curve': mse_rls, 'erle_db': erle_rls, 'final_mse_db': mse_rls[-1]}
 
-    # --- SSM-AF / Hybrid-NLMS-NN ---
+    # --- SSM-AF / NLMS+TCN ---
     if task == 'loudspeaker_echo':
-        print("Evaluating TCN...")
+        print("Evaluating NLMS + TCN residual...")
         model = TCNFilter(filter_length=filter_length, hidden_dim=32, num_blocks=3).to(device)
-        method_name = 'TCN'
+        method_name = 'NLMS+TCN'
     else:
         print("Evaluating SSM-AF...")
         model = SSMAF(filter_length=filter_length, hidden_dim=64).to(device)
         method_name = 'SSM-AF'
     if checkpoint and os.path.exists(checkpoint):
         ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
-        # Handle both checkpoint formats: full dict or direct state_dict
         try:
             if 'model_state_dict' in ckpt:
                 model.load_state_dict(ckpt['model_state_dict'])
@@ -258,13 +259,29 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
             print(f"  Warning: Checkpoint incompatible (architecture changed), using random weights")
             print(f"  {e}")
 
-    x_dev, d_dev = x.to(device), d.to(device)
-    with torch.no_grad():
-        y_ssm, e_ssm, w_hist = model(x_dev, d_dev)
-    e_ssm_np = e_ssm.squeeze().cpu().numpy()
-    mse_ssm = 10 * np.log10(np.cumsum(e_ssm_np**2) / np.arange(1, seq_len+1) + 1e-10)
-    erle_ssm = 10 * np.log10(np.mean(d.numpy()**2) / (np.mean(e_ssm_np**2) + 1e-10))
-    results[method_name] = {'mse_curve': mse_ssm, 'erle_db': erle_ssm, 'final_mse_db': mse_ssm[-1]}
+    if task == 'loudspeaker_echo':
+        # Two-stage: NLMS for linear + TCN for nonlinear residual
+        nlms = NLMSFilter(filter_length, mu=0.5)
+        y_nlms_eval, e_nlms_eval = nlms.process(x.squeeze(), d.squeeze())
+        # TCN predicts nonlinear residual
+        x_dev = x.to(device)
+        with torch.no_grad():
+            y_tcn_res, _, _ = model(x_dev, torch.zeros_like(x_dev))  # d=0, predict residual
+        # Combine: y_total = y_nlms + y_tcn_residual
+        y_total = y_nlms_eval + y_tcn_res.squeeze().cpu()
+        e_total = d.squeeze() - y_total
+        e_np = e_total.numpy()
+        mse_curve = 10 * np.log10(np.cumsum(e_np**2) / np.arange(1, seq_len+1) + 1e-10)
+        erle_val = 10 * np.log10(np.mean(d.numpy()**2) / (np.mean(e_np**2) + 1e-10))
+        results[method_name] = {'mse_curve': mse_curve, 'erle_db': erle_val, 'final_mse_db': mse_curve[-1]}
+    else:
+        x_dev, d_dev = x.to(device), d.to(device)
+        with torch.no_grad():
+            y_ssm, e_ssm, w_hist = model(x_dev, d_dev)
+        e_ssm_np = e_ssm.squeeze().cpu().numpy()
+        mse_ssm = 10 * np.log10(np.cumsum(e_ssm_np**2) / np.arange(1, seq_len+1) + 1e-10)
+        erle_ssm = 10 * np.log10(np.mean(d.numpy()**2) / (np.mean(e_ssm_np**2) + 1e-10))
+        results[method_name] = {'mse_curve': mse_ssm, 'erle_db': erle_ssm, 'final_mse_db': mse_ssm[-1]}
 
     # Print summary table
     print(f"\n{'='*60}")

@@ -109,28 +109,37 @@ def train_ssm_af(
     best_loss = float('inf')
     history = {'train_loss': [], 'val_loss': []}
 
-    # For loudspeaker_echo: fixed echo path + fixed dataset
-    # Real scenario: one room, one device, offline training
+    # For loudspeaker_echo: two-stage training
+    # Stage 1: Run NLMS to get linear estimate + residual
+    # Stage 2: Train TCN on residual (nonlinear component only)
     if task == 'loudspeaker_echo':
         num_train_samples = 32
         # Generate ONE fixed echo path (deterministic seed)
         torch.manual_seed(42)
-        h_fixed = _generate_itu_echo_path(1, filter_length).to(device)
-        # Generate data with the SAME echo path every time
-        x_fixed_list, d_fixed_list = [], []
+        h_fixed = _generate_itu_echo_path(1, filter_length)
+        # Generate data with the SAME echo path
+        x_fixed_list, d_fixed_list, residual_list = [], [], []
+        nlms = NLMSFilter(filter_length, mu=0.5)
         for _ in range(num_train_samples):
-            x_i = torch.randn(1, seq_len).to(device)
+            x_i = torch.randn(seq_len)
             # Linear convolution with fixed path
             x_conv = torch.nn.functional.conv1d(
-                x_i.unsqueeze(0), h_fixed.unsqueeze(0), padding=filter_length - 1
+                x_i.unsqueeze(0).unsqueeze(0), h_fixed.unsqueeze(0).unsqueeze(0),
+                padding=filter_length - 1
             ).squeeze()[:seq_len]
             # Nonlinear: soft clipping
-            d_i = torch.tanh(x_conv * 10.0)
-            x_fixed_list.append(x_i.squeeze())
+            d_i = torch.tanh(x_conv * 3.0)  # milder nonlinearity
+            # Run NLMS to get linear estimate
+            y_nlms, e_nlms = nlms.process(x_i, d_i)
+            # Residual: what NLMS can't cancel (nonlinear component)
+            residual = d_i - y_nlms
+            x_fixed_list.append(x_i)
             d_fixed_list.append(d_i)
-        x_fixed = torch.stack(x_fixed_list)
-        d_fixed = torch.stack(d_fixed_list)
-        print(f"Fixed echo path, {num_train_samples} samples, soft_clip gain=10")
+            residual_list.append(residual)
+        x_fixed = torch.stack(x_fixed_list).to(device)
+        d_fixed = torch.stack(d_fixed_list).to(device)
+        residual_fixed = torch.stack(residual_list).to(device)
+        print(f"Two-stage: NLMS residual training, {num_train_samples} samples, soft_clip gain=3")
 
     for epoch in range(epochs):
         model.train()
@@ -166,9 +175,10 @@ def train_ssm_af(
                 filter_length=filter_length, nonlinearity='pure_nonlinear'
             )
         elif task == 'loudspeaker_echo':
-            # Use random subset from fixed dataset
+            # Train TCN on NLMS residual (nonlinear component only)
             idx = torch.randperm(num_train_samples)[:batch_size]
-            x, d = x_fixed[idx], d_fixed[idx]
+            x = x_fixed[idx]
+            d = residual_fixed[idx]  # Target: nonlinear residual, not full signal
         else:
             raise ValueError(f"Unknown task: {task}")
 
