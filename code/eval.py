@@ -196,7 +196,7 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
 
     # --- SSM-AF ---
     print("Evaluating SSM-AF...")
-    model = SSMAF(filter_length=filter_length, block_size=16, d_state=16, context_blocks=4).to(device)
+    model = SSMAF(filter_length=filter_length, hidden_dim=32).to(device)
     if checkpoint and os.path.exists(checkpoint):
         model.load_state_dict(torch.load(checkpoint, map_location=device))
         print(f"  Loaded checkpoint: {checkpoint}")
