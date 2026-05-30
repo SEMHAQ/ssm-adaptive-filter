@@ -114,7 +114,7 @@ def train_ssm_af(
         elif task == 'nonstationary_echo':
             x, d, h_list = generate_nonstationary_echo_data(
                 num_samples=batch_size, seq_len=seq_len,
-                filter_length=filter_length, num_changes=3
+                filter_length=filter_length, num_changes=10
             )
         else:
             raise ValueError(f"Unknown task: {task}")

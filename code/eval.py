@@ -172,10 +172,10 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     elif task == 'nonstationary_echo':
         x, d, h_list = generate_nonstationary_echo_data(
             num_samples=1, seq_len=seq_len, filter_length=filter_length,
-            num_changes=3
+            num_changes=10
         )
         w_true = h_list[0].squeeze().numpy()  # First segment's echo path
-        num_changes = 3
+        num_changes = 10
     else:
         raise ValueError(f"Unknown task: {task}")
 
