@@ -407,6 +407,94 @@ def generate_robust_echo_data(
     return x, d, h
 
 
+def generate_loudspeaker_echo_data(
+    num_samples: int = 10000,
+    seq_len: int = 8000,
+    filter_length: int = 64,
+    snr_db: float = 20.0,
+    nl_type: str = 'hard_clip',
+    nl_params: dict = None
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Generate loudspeaker echo cancellation data with severe nonlinearity.
+
+    Signal path: x(n) -> linear echo path h -> nonlinear distortion f(.) -> d(n)
+
+    Real loudspeakers exhibit:
+    - Hard clipping at saturation
+    - Soft saturation (tanh-like)
+    - Harmonic distortion
+    - Intermodulation
+
+    Linear adaptive filters (LMS/NLMS/RLS) CANNOT model the nonlinear part.
+    The residual error after linear cancellation contains the nonlinear component.
+    A neural network can learn this nonlinear residual.
+
+    Args:
+        num_samples: Number of sequences
+        seq_len: Sequence length
+        filter_length: Filter length
+        snr_db: Signal-to-noise ratio
+        nl_type: Type of nonlinearity ('hard_clip', 'soft_clip', 'poly5', 'crossover')
+        nl_params: Additional parameters for nonlinearity
+
+    Returns:
+        x: (num_samples, seq_len) - input signal
+        d: (num_samples, seq_len) - desired signal (nonlinear echo + noise)
+        h: (num_samples, filter_length) - true linear echo path
+    """
+    if nl_params is None:
+        nl_params = {}
+
+    x = torch.randn(num_samples, seq_len) * 0.8
+    h = _generate_itu_echo_path(num_samples, filter_length)
+
+    # Linear convolution
+    d_linear = torch.zeros(num_samples, seq_len)
+    for i in range(num_samples):
+        x_i = x[i].unsqueeze(0).unsqueeze(0)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)
+        echo = torch.nn.functional.conv1d(x_i, h_i, padding=filter_length - 1)
+        d_linear[i] = echo.squeeze()[:seq_len]
+
+    # Apply severe nonlinearity
+    if nl_type == 'hard_clip':
+        # Hard clipping - loudspeaker saturation
+        threshold = nl_params.get('threshold', 0.3)
+        d = torch.clamp(d_linear, -threshold, threshold)
+    elif nl_type == 'soft_clip':
+        # Soft clipping with very steep tanh
+        gain = nl_params.get('gain', 10.0)
+        d = torch.tanh(d_linear * gain)
+    elif nl_type == 'poly5':
+        # 5th-order polynomial (common loudspeaker model)
+        # y = x + a2*x^2 + a3*x^3 + a5*x^5
+        a2 = nl_params.get('a2', 0.5)
+        a3 = nl_params.get('a3', -0.3)
+        a5 = nl_params.get('a5', 0.1)
+        d = d_linear + a2 * d_linear**2 + a3 * d_linear**3 + a5 * d_linear**5
+    elif nl_type == 'crossover':
+        # Crossover distortion (class-B amplifier)
+        dead_zone = nl_params.get('dead_zone', 0.2)
+        d = torch.where(
+            torch.abs(d_linear) < dead_zone,
+            torch.zeros_like(d_linear),
+            d_linear - torch.sign(d_linear) * dead_zone
+        )
+    elif nl_type == 'mixed':
+        # Mixed: linear + nonlinear components
+        alpha = nl_params.get('alpha', 0.6)  # Linear fraction
+        d = alpha * d_linear + (1 - alpha) * torch.tanh(d_linear * 5)
+    else:
+        d = d_linear
+
+    # Add noise
+    noise_power = 10 ** (-snr_db / 10)
+    d = d + torch.randn(num_samples, seq_len) * np.sqrt(noise_power)
+
+    return x, d, h
+
+
 if __name__ == "__main__":
     # Test data generation
     print("Generating echo cancellation data...")
