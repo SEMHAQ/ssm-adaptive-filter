@@ -92,5 +92,5 @@ desktop.ini
 credentials.json
 .claude/
 
-# Results (large files, keep local)
+# Results / checkpoints (large files)
 res/

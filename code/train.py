@@ -176,6 +176,17 @@ def train_ssm_af(
     with open(os.path.join(task_dir, 'metrics.json'), 'w') as f:
         json.dump(summary, f, indent=2)
 
+    # Save lightweight results to tracked directory (no checkpoints)
+    results_dir = os.path.join('results', task)
+    os.makedirs(results_dir, exist_ok=True)
+    with open(os.path.join(results_dir, 'metrics.json'), 'w') as f:
+        json.dump({
+            'task': task,
+            'final_mse_db': summary['final_mse_db'],
+            'best_loss': best_loss,
+            'history': history,
+        }, f, indent=2)
+
     print(f"\nTraining complete. Results saved to {task_dir}/")
     return model, history
 
