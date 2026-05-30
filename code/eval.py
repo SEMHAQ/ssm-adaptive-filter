@@ -21,7 +21,8 @@ from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
     generate_noise_reduction_data,
-    generate_nonstationary_echo_data
+    generate_nonstationary_echo_data,
+    generate_robust_echo_data
 )
 
 
@@ -176,6 +177,13 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
         )
         w_true = h_list[0].squeeze().numpy()  # First segment's echo path
         num_changes = 10
+    elif task == 'robust_echo':
+        x, d, h = generate_robust_echo_data(
+            num_samples=1, seq_len=seq_len, filter_length=filter_length,
+            noise_type='colored'
+        )
+        w_true = h.squeeze().numpy()
+        num_changes = 0
     else:
         raise ValueError(f"Unknown task: {task}")
 
@@ -282,7 +290,7 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate SSM-AF model')
     parser.add_argument('--task', type=str, default='all',
                         choices=['echo_cancellation', 'channel_equalization', 'noise_reduction',
-                                 'nonstationary_echo', 'all'])
+                                 'nonstationary_echo', 'robust_echo', 'all'])
     parser.add_argument('--filter_length', type=int, default=64)
     parser.add_argument('--seq_len', type=int, default=8000)
     parser.add_argument('--checkpoint', type=str, default=None)
@@ -291,7 +299,7 @@ def main():
 
     args = parser.parse_args()
 
-    tasks = ['echo_cancellation', 'channel_equalization', 'noise_reduction', 'nonstationary_echo'] if args.task == 'all' else [args.task]
+    tasks = ['echo_cancellation', 'channel_equalization', 'noise_reduction', 'nonstationary_echo', 'robust_echo'] if args.task == 'all' else [args.task]
 
     all_results = {}
     for task in tasks:

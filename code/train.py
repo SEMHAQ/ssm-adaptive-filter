@@ -20,7 +20,8 @@ from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
     generate_noise_reduction_data,
-    generate_nonstationary_echo_data
+    generate_nonstationary_echo_data,
+    generate_robust_echo_data
 )
 
 
@@ -115,6 +116,11 @@ def train_ssm_af(
             x, d, h_list = generate_nonstationary_echo_data(
                 num_samples=batch_size, seq_len=seq_len,
                 filter_length=filter_length, num_changes=10
+            )
+        elif task == 'robust_echo':
+            x, d, h = generate_robust_echo_data(
+                num_samples=batch_size, seq_len=seq_len,
+                filter_length=filter_length, noise_type='colored'
             )
         else:
             raise ValueError(f"Unknown task: {task}")
@@ -219,6 +225,11 @@ def evaluate_baselines(task: str, filter_length: int = 64, seq_len: int = 4000):
             num_samples=1, seq_len=seq_len, filter_length=filter_length,
             num_changes=3
         )
+    elif task == 'robust_echo':
+        x, d, h = generate_robust_echo_data(
+            num_samples=1, seq_len=seq_len, filter_length=filter_length,
+            noise_type='colored'
+        )
     else:
         raise ValueError(f"Unknown task: {task}")
 
@@ -258,7 +269,7 @@ def main():
     parser = argparse.ArgumentParser(description='Train SSM-AF model')
     parser.add_argument('--task', type=str, default='echo_cancellation',
                         choices=['echo_cancellation', 'channel_equalization', 'noise_reduction',
-                                 'nonstationary_echo'],
+                                 'nonstationary_echo', 'robust_echo'],
                         help='Adaptive filtering task')
     parser.add_argument('--filter_length', type=int, default=64, help='Filter length')
     parser.add_argument('--hidden_dim', type=int, default=32, help='Hidden dimension')
