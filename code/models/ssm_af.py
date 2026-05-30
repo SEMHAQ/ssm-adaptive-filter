@@ -1,8 +1,11 @@
 """
-SSM-AF: State Space Model based Adaptive Filter (v5 - Final)
+SSM-AF: State Space Model based Adaptive Filter (v6 - Context-Aware)
 
-Simple and reliable: NLMS with learned step size.
-The network learns when to take big/small steps based on signal context.
+NLMS with learned step size using error history context.
+The network observes a window of recent errors to detect:
+- Convergence state (steady decreasing error -> small step)
+- Echo path change (sudden error increase -> large step)
+- Noise level (error variance -> optimal tradeoff)
 """
 
 import torch
@@ -13,63 +16,88 @@ import numpy as np
 
 class StepSizeNet(nn.Module):
     """
-    Predicts adaptive step size from current signal context.
+    Predicts adaptive step size from signal context and error history.
 
-    Input: input buffer x_buf and current error e
+    Key insight: By looking at recent error trends, the network can detect
+    when the echo path has changed and increase step size accordingly.
+
+    Input: x_buf (filter_length), e_history (context_len), x_power (1)
     Output: step size mu in (0, 1)
-
-    The network learns that:
-    - Large error -> larger step (fast convergence)
-    - Small error -> smaller step (low steady-state error)
-    - Signal power affects optimal step size
     """
 
-    def __init__(self, filter_length: int, hidden_dim: int = 32):
+    def __init__(self, filter_length: int, context_len: int = 16, hidden_dim: int = 32):
         super().__init__()
-        # Simple 2-layer MLP
-        self.net = nn.Sequential(
-            nn.Linear(filter_length + 1, hidden_dim),
+        self.context_len = context_len
+
+        # Error history encoder (captures temporal patterns)
+        self.error_encoder = nn.Sequential(
+            nn.Linear(context_len, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+        )
+
+        # Signal features encoder
+        self.signal_encoder = nn.Sequential(
+            nn.Linear(filter_length + 1, hidden_dim),  # x_buf + current error
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+        )
+
+        # Combine and predict step size
+        self.predictor = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1),
             nn.Sigmoid()
         )
-        # Initialize to output ~0.5 (moderate step size)
-        nn.init.zeros_(self.net[-2].weight)
-        nn.init.constant_(self.net[-2].bias, 0.0)
 
-    def forward(self, x_buf, e):
+        # Initialize to output ~0.5 initially
+        nn.init.zeros_(self.predictor[-2].weight)
+        nn.init.constant_(self.predictor[-2].bias, 0.0)
+
+    def forward(self, x_buf, e_current, e_history):
         """
         Args:
-            x_buf: (B, filter_length)
-            e: (B, 1)
+            x_buf: (B, filter_length) - current input buffer
+            e_current: (B, 1) - current error
+            e_history: (B, context_len) - recent error history
         Returns:
-            mu: (B, 1)
+            mu: (B, 1) - step size in (0, 1)
         """
-        inp = torch.cat([x_buf, e], dim=-1)
-        return self.net(inp)
+        # Encode error history (temporal patterns)
+        e_feat = self.error_encoder(e_history)
+
+        # Encode current signal state
+        sig_feat = self.signal_encoder(torch.cat([x_buf, e_current], dim=-1))
+
+        # Combine and predict
+        combined = torch.cat([e_feat, sig_feat], dim=-1)
+        return self.predictor(combined)
 
 
 class SSMAF(nn.Module):
     """
-    SSM-AF v5: NLMS with Learned Step Size
+    SSM-AF v6: Context-Aware NLMS with Learned Step Size
+
+    Key innovation: Step size prediction conditioned on error history,
+    enabling the model to detect and adapt to non-stationary changes.
 
     Update rule:
         direction = x_buf / (||x_buf||^2 + eps)   [NLMS direction]
-        mu = sigmoid(MLP(x_buf, e))                 [learned step size]
+        mu = sigmoid(MLP(x_buf, e, e_history))      [context-aware step size]
         w = w + mu * direction * e
-
-    This is a direct improvement over NLMS: same proven direction,
-    but the step size adapts to signal conditions.
     """
 
-    def __init__(self, filter_length: int = 64, hidden_dim: int = 32, **kwargs):
+    def __init__(self, filter_length: int = 64, hidden_dim: int = 32,
+                 context_len: int = 16, **kwargs):
         super().__init__()
         self.filter_length = filter_length
+        self.context_len = context_len
 
-        # Step size predictor
-        self.step_net = StepSizeNet(filter_length, hidden_dim)
+        # Context-aware step size predictor
+        self.step_net = StepSizeNet(filter_length, context_len, hidden_dim)
 
-        # Learnable base step size (initialized to NLMS-like value)
+        # Learnable base step size
         self.base_mu = nn.Parameter(torch.tensor(0.1))
 
     def forward(self, x, d):
@@ -87,6 +115,7 @@ class SSMAF(nn.Module):
         # Initialize
         w = torch.zeros(batch, self.filter_length, device=x.device)
         x_buf = torch.zeros(batch, self.filter_length, device=x.device)
+        e_history = torch.zeros(batch, self.context_len, device=x.device)
 
         y_list, e_list, w_list = [], [], []
 
@@ -103,11 +132,15 @@ class SSMAF(nn.Module):
             x_norm_sq = (x_buf ** 2).sum(dim=-1, keepdim=True) + 1e-8
             direction = x_buf / x_norm_sq
 
-            # Learned step size (base + learned)
-            mu = self.step_net(x_buf, e_t) + self.base_mu
+            # Context-aware step size
+            mu = self.step_net(x_buf, e_t, e_history) + self.base_mu
 
             # Update filter coefficients
             w = w + mu * direction * e_t
+
+            # Update error history buffer
+            e_history = torch.roll(e_history, 1, dims=1)
+            e_history[:, 0] = e_t.squeeze(-1)
 
             y_list.append(y_t.squeeze(-1))
             e_list.append(e_t.squeeze(-1))
@@ -118,33 +151,6 @@ class SSMAF(nn.Module):
         w_history = torch.stack(w_list, dim=1)
 
         return y, e, w_history
-
-    def infer(self, x):
-        """Real-time inference."""
-        self.eval()
-        seq_len = x.shape[0]
-        device = x.device
-
-        w = torch.zeros(1, self.filter_length, device=device)
-        x_buf = torch.zeros(1, self.filter_length, device=device)
-        outputs = []
-
-        with torch.no_grad():
-            for t in range(seq_len):
-                x_buf = torch.roll(x_buf, 1, dims=1)
-                x_buf[:, 0] = x[t]
-
-                y_t = (w * x_buf).sum(dim=-1, keepdim=True)
-                e_t = torch.zeros(1, 1, device=device)
-
-                x_norm_sq = (x_buf ** 2).sum(dim=-1, keepdim=True) + 1e-8
-                direction = x_buf / x_norm_sq
-                mu = self.step_net(x_buf, e_t) + self.base_mu
-
-                w = w + mu * direction * e_t
-                outputs.append(y_t.squeeze())
-
-        return torch.stack(outputs)
 
 
 # ============================================================
