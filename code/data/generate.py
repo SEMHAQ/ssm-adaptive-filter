@@ -264,6 +264,76 @@ def _generate_random_channel(num_samples: int, length: int) -> torch.Tensor:
     return channel
 
 
+def generate_nonlinear_echo_data(
+    num_samples: int = 10000,
+    seq_len: int = 8000,
+    filter_length: int = 64,
+    snr_db: float = 20.0,
+    nonlinearity: str = 'tanh',
+    nl_strength: float = 0.5
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Generate nonlinear echo cancellation data.
+
+    Real-world echo paths often contain nonlinearities:
+    - Loudspeaker distortion (saturation/clipping)
+    - Acoustic nonlinearity
+    - Amplifier distortion
+
+    Traditional linear adaptive filters (LMS/NLMS/RLS) cannot model
+    these nonlinearities, leading to poor performance.
+
+    A neural network can learn the nonlinear mapping, providing
+    a clear advantage over classical methods.
+
+    Args:
+        num_samples: Number of sequences
+        seq_len: Sequence length
+        filter_length: Filter length
+        snr_db: Signal-to-noise ratio
+        nonlinearity: Type of nonlinearity ('tanh', 'clip', 'poly', 'sigmoid')
+        nl_strength: Strength of nonlinearity (0=linear, 1=strong)
+
+    Returns:
+        x: (num_samples, seq_len) - input signal
+        d: (num_samples, seq_len) - desired signal (nonlinear echo + noise)
+        h: (num_samples, filter_length) - true linear component of echo path
+    """
+    x = torch.randn(num_samples, seq_len)
+    h = _generate_itu_echo_path(num_samples, filter_length)
+
+    # Linear convolution
+    d_linear = torch.zeros(num_samples, seq_len)
+    for i in range(num_samples):
+        x_i = x[i].unsqueeze(0).unsqueeze(0)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)
+        echo = torch.nn.functional.conv1d(x_i, h_i, padding=filter_length - 1)
+        d_linear[i] = echo.squeeze()[:seq_len]
+
+    # Apply nonlinearity
+    if nonlinearity == 'tanh':
+        # Soft saturation (like loudspeaker)
+        d = (1 - nl_strength) * d_linear + nl_strength * torch.tanh(d_linear * 2)
+    elif nonlinearity == 'clip':
+        # Hard clipping
+        clip_level = 1.0 - nl_strength * 0.5
+        d = torch.clamp(d_linear, -clip_level, clip_level)
+    elif nonlinearity == 'poly':
+        # Polynomial nonlinearity: y = x + a*x^2 + b*x^3
+        d = d_linear + nl_strength * 0.3 * d_linear**2 + nl_strength * 0.1 * d_linear**3
+    elif nonlinearity == 'sigmoid':
+        # Sigmoid saturation
+        d = (1 - nl_strength) * d_linear + nl_strength * torch.sigmoid(d_linear * 3) - 0.5
+    else:
+        d = d_linear
+
+    # Add noise
+    noise_power = 10 ** (-snr_db / 10)
+    d = d + torch.randn(num_samples, seq_len) * np.sqrt(noise_power)
+
+    return x, d, h
+
+
 def generate_robust_echo_data(
     num_samples: int = 10000,
     seq_len: int = 8000,

@@ -1,19 +1,18 @@
 """
-SSM-AF: State Space Model based Adaptive Filter (v8 - Learned Correction)
+SSM-AF: State Space Model based Adaptive Filter (v9 - Nonlinear)
 
-NLMS with learned correction vector.
+Hybrid linear-nonlinear adaptive filter for nonlinear echo cancellation.
 
-Key insight: Instead of just learning a scalar step size,
-learn a full correction vector that can adjust each filter coefficient
-independently based on signal context.
+Key innovation:
+- Linear component: NLMS filter for linear echo path
+- Nonlinear component: Neural network for nonlinear distortion
+- Joint optimization of both components
 
-Update rule:
-    w = w + mu * direction * e + correction(context)
+Traditional LMS/NLMS/RLS assume linear echo paths and CANNOT handle
+nonlinearities (loudspeaker distortion, clipping, saturation).
 
-This gives the model much more flexibility:
-- Can correct specific taps that need adjustment
-- Can use context to predict how each coefficient should change
-- NLMS provides stable base, correction handles non-stationarity
+SSM-AF can model both linear AND nonlinear components, providing
+a fundamental advantage in real-world scenarios.
 """
 
 import torch
@@ -22,85 +21,77 @@ import torch.nn.functional as F
 import numpy as np
 
 
-class CorrectionNet(nn.Module):
+class NonlinearCorrection(nn.Module):
     """
-    Predicts correction vector for filter coefficients.
+    Neural network that models nonlinear distortion.
 
-    Input: signal context (x_buf, e_history, current e)
-    Output: correction vector of dimension filter_length
-
-    The network learns to predict how each filter coefficient
-    should be adjusted based on recent signal statistics.
+    Takes the input buffer and predicts a nonlinear correction
+    that captures effects like:
+    - Loudspeaker saturation
+    - Amplifier clipping
+    - Acoustic nonlinearities
     """
 
-    def __init__(self, filter_length: int, context_len: int = 32, hidden_dim: int = 64):
+    def __init__(self, filter_length: int, hidden_dim: int = 64):
         super().__init__()
-        self.filter_length = filter_length
-
-        # Context encoder (processes error history and current state)
-        self.context_encoder = nn.Sequential(
-            nn.Linear(context_len + 1, hidden_dim),
+        self.net = nn.Sequential(
+            nn.Linear(filter_length, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+            nn.Tanh()  # Bounded output for stability
         )
 
-        # Correction predictor
-        self.corrector = nn.Sequential(
-            nn.Linear(hidden_dim + filter_length, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, filter_length),
-            nn.Tanh()  # Bounded correction
-        )
+        # Initialize to small outputs
+        nn.init.zeros_(self.net[-2].weight)
+        nn.init.zeros_(self.net[-2].bias)
 
-        # Scale factor (learnable)
-        self.scale = nn.Parameter(torch.tensor(0.01))
-
-        # Initialize to small corrections
-        nn.init.zeros_(self.corrector[-2].weight)
-        nn.init.zeros_(self.corrector[-2].bias)
-
-    def forward(self, x_buf, e_current, e_history):
+    def forward(self, x_buf):
         """
         Args:
-            x_buf: (B, filter_length) - current input buffer
-            e_current: (B, 1) - current error
-            e_history: (B, context_len) - recent error history
+            x_buf: (B, filter_length) - input buffer
         Returns:
-            correction: (B, filter_length) - correction vector
+            nl_output: (B, 1) - nonlinear correction
         """
-        # Encode context
-        context = torch.cat([e_history, e_current], dim=-1)
-        ctx_feat = self.context_encoder(context)
-
-        # Predict correction
-        combined = torch.cat([ctx_feat, x_buf], dim=-1)
-        correction = self.corrector(combined)
-
-        return correction * self.scale
+        return self.net(x_buf)
 
 
 class SSMAF(nn.Module):
     """
-    SSM-AF v8: NLMS + Learned Correction Vector
+    SSM-AF v9: Hybrid Linear-Nonlinear Adaptive Filter
+
+    Architecture:
+    1. Linear component: NLMS filter (proven, stable)
+    2. Nonlinear component: Neural network (models distortion)
+    3. Adaptive mixing: learns when to trust which component
 
     Update rule:
-        direction = x_buf / (||x_buf||^2 + eps)   [NLMS direction]
-        mu = sigmoid(MLP(context)) + base_mu        [adaptive step size]
-        correction = MLP(x_buf, context)             [learned correction]
-        w = w + mu * direction * e + correction
+        y_linear = w^T * x_buf                    [NLMS output]
+        y_nonlinear = MLP(x_buf)                   [nonlinear correction]
+        y = y_linear + alpha * y_nonlinear          [mixed output]
+        e = d - y                                   [error]
+        w = w + mu * (x_buf / ||x_buf||^2) * e     [NLMS update]
 
-    This combines:
-    1. NLMS for stable, proven convergence
-    2. Adaptive step size for overall scaling
-    3. Learned correction for fine-grained adjustment
+    Advantages:
+    - Handles nonlinear echo paths (LMS/NLMS/RLS cannot)
+    - Stable convergence (NLMS base)
+    - Learns optimal linear-nonlinear balance
     """
 
     def __init__(self, filter_length: int = 64, hidden_dim: int = 32,
                  context_len: int = 32, **kwargs):
         super().__init__()
         self.filter_length = filter_length
-        self.context_len = context_len
+
+        # Nonlinear correction network
+        self.nl_net = NonlinearCorrection(filter_length, hidden_dim * 2)
+
+        # Learnable mixing factor (how much nonlinear correction to apply)
+        self.alpha = nn.Parameter(torch.tensor(0.1))
+
+        # Learnable step size for NLMS
+        self.base_mu = nn.Parameter(torch.tensor(0.1))
 
         # Step size predictor
         self.step_net = nn.Sequential(
@@ -110,11 +101,7 @@ class SSMAF(nn.Module):
             nn.Sigmoid()
         )
 
-        # Correction predictor
-        self.correction_net = CorrectionNet(filter_length, context_len, hidden_dim)
-
-        # Learnable base step size
-        self.base_mu = nn.Parameter(torch.tensor(0.1))
+        self.context_len = context_len
 
     def forward(self, x, d):
         """
@@ -140,8 +127,16 @@ class SSMAF(nn.Module):
             x_buf = torch.roll(x_buf, 1, dims=1)
             x_buf[:, 0] = x[:, t]
 
-            # Filter output
-            y_t = (w * x_buf).sum(dim=-1, keepdim=True)
+            # Linear component (NLMS)
+            y_linear = (w * x_buf).sum(dim=-1, keepdim=True)
+
+            # Nonlinear component
+            y_nonlinear = self.nl_net(x_buf)
+
+            # Mixed output
+            y_t = y_linear + self.alpha * y_nonlinear
+
+            # Error
             e_t = d[:, t:t+1] - y_t
 
             # NLMS direction
@@ -152,11 +147,9 @@ class SSMAF(nn.Module):
             mu_input = torch.cat([e_history, e_t], dim=-1)
             mu = self.step_net(mu_input) + self.base_mu
 
-            # Learned correction
-            correction = self.correction_net(x_buf, e_t, e_history)
-
-            # Update: NLMS + correction
-            w = w + mu * direction * e_t + correction
+            # Update linear filter only (NLMS)
+            # Nonlinear network learns via backprop through the loss
+            w = w + mu * direction * e_t
 
             # Update error history
             e_history = torch.roll(e_history, 1, dims=1)
