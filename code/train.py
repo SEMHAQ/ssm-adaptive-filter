@@ -70,8 +70,17 @@ def train_ssm_af(
         normalize=True
     ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+
+    # Learning rate scheduler with warmup
+    warmup_epochs = min(10, epochs // 5)
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs  # Linear warmup
+        else:
+            progress = (epoch - warmup_epochs) / (epochs - warmup_epochs)
+            return 0.5 * (1 + np.cos(np.pi * progress))  # Cosine decay
+    scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     print(f"Training on: {device}")
@@ -108,13 +117,23 @@ def train_ssm_af(
         # Forward pass
         y, e, w_history = model(x, d)
 
+        # Check for NaN in output
+        if torch.isnan(y).any() or torch.isnan(e).any():
+            print(f"Epoch {epoch+1:3d}/{epochs} | NaN detected in output, skipping update")
+            continue
+
         # Loss: MSE of error signal
         loss = torch.mean(e ** 2)
+
+        # Check for NaN loss
+        if torch.isnan(loss):
+            print(f"Epoch {epoch+1:3d}/{epochs} | NaN loss, skipping update")
+            continue
 
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
         optimizer.step()
         scheduler.step()
 
@@ -211,7 +230,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=100, help='Training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
     parser.add_argument('--seq_len', type=int, default=1000, help='Sequence length')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
     parser.add_argument('--device', type=str, default='cuda', help='Device')
     parser.add_argument('--save_dir', type=str, default='checkpoints', help='Save directory')
 
