@@ -43,7 +43,7 @@ class SelectiveSSM(nn.Module):
         )
 
         # SSM parameters (input-dependent via projection)
-        self.x_proj = nn.Linear(d_model, d_state * 2 + 1, bias=False)  # B, C, dt
+        self.x_proj = nn.Linear(d_model, d_state * 2 + d_model, bias=False)  # B, C, dt
 
         # A parameter (log space for stability)
         A = torch.arange(1, d_state + 1, dtype=torch.float32).unsqueeze(0).expand(d_model, -1)
@@ -73,10 +73,10 @@ class SelectiveSSM(nn.Module):
         x_conv = F.silu(x_conv)
 
         # Compute input-dependent SSM parameters
-        x_dbl = self.x_proj(x_conv)  # (B, L, 2*d_state + 1)
+        x_dbl = self.x_proj(x_conv)  # (B, L, 2*d_state + D)
         B_param = x_dbl[..., :self.d_state]  # (B, L, d_state)
         C_param = x_dbl[..., self.d_state:2*self.d_state]  # (B, L, d_state)
-        dt = F.softplus(x_dbl[..., -1])  # (B, L) - discretization step
+        dt = F.softplus(x_dbl[..., 2*self.d_state:])  # (B, L, D) - discretization step
 
         # Discretize A
         A = -torch.exp(self.A_log)  # (D, d_state)
