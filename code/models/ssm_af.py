@@ -1,169 +1,214 @@
 """
-SSM-AF: State Space Model based Adaptive Filter (v9 - Nonlinear)
+SSM-AF: State Space Model based Adaptive Filter (v10 - Meta-Learning)
 
-Hybrid linear-nonlinear adaptive filter for nonlinear echo cancellation.
+Meta-learning approach for fast adaptation in non-stationary environments.
 
-Key innovation:
-- Linear component: NLMS filter for linear echo path
-- Nonlinear component: Neural network for nonlinear distortion
-- Joint optimization of both components
+Key innovation: The model learns to adapt quickly by training on many
+different echo paths. At test time, it can converge in a few samples
+to a new echo path, while NLMS/RLS need hundreds of samples.
 
-Traditional LMS/NLMS/RLS assume linear echo paths and CANNOT handle
-nonlinearities (loudspeaker distortion, clipping, saturation).
+Training: MAML-style meta-learning
+- Support set: First N samples of a new echo path
+- Query set: Remaining samples
+- Objective: Minimize loss after a few gradient steps on support set
 
-SSM-AF can model both linear AND nonlinear components, providing
-a fundamental advantage in real-world scenarios.
+Testing: Fast adaptation
+- Given a new echo path, adapt in K samples
+- Compare convergence speed with NLMS/RLS
 """
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 
 
-class NonlinearCorrection(nn.Module):
+class AdaptiveFilterNet(nn.Module):
     """
-    Neural network that models nonlinear distortion.
+    Neural network that learns to be an adaptive filter.
 
-    Takes the input buffer and predicts a nonlinear correction
-    that captures effects like:
-    - Loudspeaker saturation
-    - Amplifier clipping
-    - Acoustic nonlinearities
-    """
-
-    def __init__(self, filter_length: int, hidden_dim: int = 64):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(filter_length, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-            nn.Tanh()  # Bounded output for stability
-        )
-
-        # Initialize to small outputs
-        nn.init.zeros_(self.net[-2].weight)
-        nn.init.zeros_(self.net[-2].bias)
-
-    def forward(self, x_buf):
-        """
-        Args:
-            x_buf: (B, filter_length) - input buffer
-        Returns:
-            nl_output: (B, 1) - nonlinear correction
-        """
-        return self.net(x_buf)
-
-
-class SSMAF(nn.Module):
-    """
-    SSM-AF v9: Hybrid Linear-Nonlinear Adaptive Filter
+    Instead of learning a fixed update rule, it learns to predict
+    filter coefficients directly from signal context.
 
     Architecture:
-    1. Linear component: NLMS filter (proven, stable)
-    2. Nonlinear component: Neural network (models distortion)
-    3. Adaptive mixing: learns when to trust which component
-
-    Update rule:
-        y_linear = w^T * x_buf                    [NLMS output]
-        y_nonlinear = MLP(x_buf)                   [nonlinear correction]
-        y = y_linear + alpha * y_nonlinear          [mixed output]
-        e = d - y                                   [error]
-        w = w + mu * (x_buf / ||x_buf||^2) * e     [NLMS update]
-
-    Advantages:
-    - Handles nonlinear echo paths (LMS/NLMS/RLS cannot)
-    - Stable convergence (NLMS base)
-    - Learns optimal linear-nonlinear balance
+    - Input: Recent signal buffer and error history
+    - Output: Filter coefficients (or update direction)
+    - Hidden: LSTM for temporal dependencies
     """
 
-    def __init__(self, filter_length: int = 64, hidden_dim: int = 32,
-                 context_len: int = 32, **kwargs):
+    def __init__(self, filter_length: int = 64, hidden_dim: int = 64,
+                 context_len: int = 32):
         super().__init__()
         self.filter_length = filter_length
-
-        # Nonlinear correction network
-        self.nl_net = NonlinearCorrection(filter_length, hidden_dim * 2)
-
-        # Learnable mixing factor (how much nonlinear correction to apply)
-        self.alpha = nn.Parameter(torch.tensor(0.1))
-
-        # Learnable step size for NLMS
-        self.base_mu = nn.Parameter(torch.tensor(0.1))
-
-        # Step size predictor
-        self.step_net = nn.Sequential(
-            nn.Linear(context_len + 1, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-            nn.Sigmoid()
-        )
-
         self.context_len = context_len
 
-    def forward(self, x, d):
+        # LSTM for temporal processing
+        self.lstm = nn.LSTM(
+            input_size=filter_length + 1,  # x_buf + error
+            hidden_size=hidden_dim,
+            num_layers=2,
+            batch_first=True
+        )
+
+        # Output: predict filter coefficients
+        self.output_net = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, filter_length)
+        )
+
+        # Initialize output to small values
+        nn.init.zeros_(self.output_net[-1].weight)
+        nn.init.zeros_(self.output_net[-1].bias)
+
+    def forward(self, x, d, num_steps=None):
         """
+        Process signal and predict filter output.
+
         Args:
             x: (B, seq_len) - input signal
             d: (B, seq_len) - desired signal
+            num_steps: Number of steps to process (None = all)
         Returns:
             y: (B, seq_len) - filter output
             e: (B, seq_len) - error signal
-            w_history: (B, seq_len, filter_length)
         """
         batch, seq_len = x.shape
+        if num_steps is None:
+            num_steps = seq_len
 
         # Initialize
         w = torch.zeros(batch, self.filter_length, device=x.device)
         x_buf = torch.zeros(batch, self.filter_length, device=x.device)
-        e_history = torch.zeros(batch, self.context_len, device=x.device)
 
-        y_list, e_list, w_list = [], [], []
+        # LSTM hidden state
+        h = None
 
-        for t in range(seq_len):
+        y_list, e_list = [], []
+
+        for t in range(min(num_steps, seq_len)):
             # Shift in new sample
             x_buf = torch.roll(x_buf, 1, dims=1)
             x_buf[:, 0] = x[:, t]
 
-            # Linear component (NLMS)
-            y_linear = (w * x_buf).sum(dim=-1, keepdim=True)
-
-            # Nonlinear component
-            y_nonlinear = self.nl_net(x_buf)
-
-            # Mixed output
-            y_t = y_linear + self.alpha * y_nonlinear
-
-            # Error
+            # Current error (for context)
+            y_t = (w * x_buf).sum(dim=-1, keepdim=True)
             e_t = d[:, t:t+1] - y_t
 
-            # NLMS direction
-            x_norm_sq = (x_buf ** 2).sum(dim=-1, keepdim=True) + 1e-8
-            direction = x_buf / x_norm_sq
+            # Prepare LSTM input: [x_buf, e_t]
+            lstm_input = torch.cat([x_buf, e_t], dim=-1).unsqueeze(1)
 
-            # Adaptive step size
-            mu_input = torch.cat([e_history, e_t], dim=-1)
-            mu = self.step_net(mu_input) + self.base_mu
+            # LSTM forward
+            lstm_out, h = self.lstm(lstm_input, h)
 
-            # Update linear filter only (NLMS)
-            # Nonlinear network learns via backprop through the loss
-            w = w + mu * direction * e_t
+            # Predict filter update
+            w_update = self.output_net(lstm_out.squeeze(1))
 
-            # Update error history
-            e_history = torch.roll(e_history, 1, dims=1)
-            e_history[:, 0] = e_t.squeeze(-1)
+            # Update filter coefficients
+            w = w + w_update
+
+            # Compute output with updated weights
+            y_t = (w * x_buf).sum(dim=-1, keepdim=True)
+            e_t = d[:, t:t+1] - y_t
 
             y_list.append(y_t.squeeze(-1))
             e_list.append(e_t.squeeze(-1))
-            w_list.append(w)
 
         y = torch.stack(y_list, dim=1)
         e = torch.stack(e_list, dim=1)
-        w_history = torch.stack(w_list, dim=1)
+
+        return y, e
+
+
+class SSMAF(nn.Module):
+    """
+    SSM-AF v10: Meta-Learning Adaptive Filter
+
+    Training procedure (MAML-style):
+    1. Sample a batch of echo paths
+    2. For each echo path:
+       a. Generate signal with this echo path
+       b. Compute loss on support set (first N samples)
+       c. Compute gradient and update model
+       d. Compute loss on query set (remaining samples)
+    3. Update meta-parameters using query set loss
+
+    Testing procedure:
+    1. Given a new echo path
+    2. Adapt for K samples (support set)
+    3. Evaluate on remaining samples (query set)
+    4. Compare convergence speed with NLMS/RLS
+    """
+
+    def __init__(self, filter_length: int = 64, hidden_dim: int = 64,
+                 context_len: int = 32, **kwargs):
+        super().__init__()
+        self.filter_length = filter_length
+
+        # Main adaptive filter network
+        self.filter_net = AdaptiveFilterNet(filter_length, hidden_dim, context_len)
+
+        # Meta-learning parameters
+        self.inner_lr = 0.01  # Learning rate for inner loop
+        self.inner_steps = 5  # Number of inner loop steps
+
+    def forward(self, x, d, num_steps=None):
+        """
+        Standard forward pass.
+
+        Args:
+            x: (B, seq_len) - input signal
+            d: (B, seq_len) - desired signal
+            num_steps: Number of steps to process
+        Returns:
+            y: (B, seq_len) - filter output
+            e: (B, seq_len) - error signal
+            w_history: (B, seq_len, filter_length) - dummy for compatibility
+        """
+        y, e = self.filter_net(x, d, num_steps)
+
+        # Create dummy w_history for compatibility
+        batch, seq_len = x.shape
+        w_history = torch.zeros(batch, seq_len, self.filter_length, device=x.device)
 
         return y, e, w_history
+
+    def meta_forward(self, x_support, d_support, x_query, d_query):
+        """
+        Meta-learning forward pass (MAML-style).
+
+        Args:
+            x_support: (B, N_support) - support set input
+            d_support: (B, N_support) - support set desired
+            x_query: (B, N_query) - query set input
+            d_query: (B, N_query) - query set desired
+        Returns:
+            query_loss: Loss on query set after adaptation
+        """
+        # Save original parameters
+        original_params = {name: param.clone() for name, param in self.named_parameters()}
+
+        # Inner loop: adapt on support set
+        for step in range(self.inner_steps):
+            # Forward on support set
+            y_support, e_support = self.filter_net(x_support, d_support)
+            support_loss = torch.mean(e_support ** 2)
+
+            # Compute gradients
+            grads = torch.autograd.grad(support_loss, self.parameters(), create_graph=True)
+
+            # Update parameters
+            for (name, param), grad in zip(self.named_parameters(), grads):
+                param.data -= self.inner_lr * grad.data
+
+        # Outer loop: evaluate on query set
+        y_query, e_query = self.filter_net(x_query, d_query)
+        query_loss = torch.mean(e_query ** 2)
+
+        # Restore original parameters
+        for name, param in self.named_parameters():
+            param.data = original_params[name].data
+
+        return query_loss
 
 
 # ============================================================
@@ -250,7 +295,7 @@ if __name__ == "__main__":
     x = torch.randn(batch_size, seq_len)
     d = torch.randn(batch_size, seq_len)
 
-    model = SSMAF(filter_length=filter_length, hidden_dim=16, context_len=16)
+    model = SSMAF(filter_length=filter_length, hidden_dim=32, context_len=16)
     y, e, w_hist = model(x, d)
 
     print(f"Input:   {x.shape}")
