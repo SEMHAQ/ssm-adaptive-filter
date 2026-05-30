@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# PyTorch / ML
+*.pt
+*.pth
+*.ckpt
+*.bin
+runs/
+wandb/
+mlruns/
+outputs/
+checkpoints/
+logs/
+*.log
+
+# Data (large files - track with DVC or download scripts)
+data/*.wav
+data/*.mp3
+data/*.h5
+data/*.hdf5
+data/*.npy
+data/*.npz
+data/*.pkl
+data/raw/
+data/processed/
+!data/README.md
+!data/download.sh
+
+# LaTeX auxiliary files
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+*.bcf
+*.run.xml
+*.xdv
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Compiled / output
+*.pdf
+!figures/*.pdf
+*.png
+!figures/*.png
+*.jpg
+*.jpeg
+*.svg
+
+# Secrets
+.env
+*.key
+*.pem
+credentials.json
