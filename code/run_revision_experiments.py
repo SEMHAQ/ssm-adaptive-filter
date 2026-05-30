@@ -965,13 +965,154 @@ def exp_depth_sweep(save_dir, device, seeds=5, num_test=200):
 
 
 # ============================================================
+# Experiment: ITU Channel Training
+# ============================================================
+
+def generate_itu_training_data(num_samples, channel_length, model_type, pilot_length, snr_db):
+    """Generate training data from ITU channel models."""
+    h = generate_itu_channel(channel_length, model=model_type, num_samples=num_samples)
+    # BPSK pilots
+    x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
+    # Convolve: d = x * h + noise
+    d = torch.zeros(num_samples, pilot_length)
+    for i in range(num_samples):
+        x_i = x[i].unsqueeze(0).unsqueeze(0)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)
+        d[i] = torch.nn.functional.conv1d(
+            x_i, h_i, padding=channel_length - 1
+        ).squeeze()[:pilot_length]
+    # Add noise
+    sig_power = torch.mean(d ** 2)
+    noise_power = sig_power / (10 ** (snr_db / 10))
+    noise = torch.randn(num_samples, pilot_length) * torch.sqrt(noise_power)
+    d = d + noise
+    return x, d, h
+
+
+def train_model_itu(model, channel_length, model_type, pilot_length, snr_db,
+                    epochs=200, batch_size=64, device='cpu'):
+    """Train LISTA on ITU channel data."""
+    model = model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+    for epoch in range(epochs):
+        model.train()
+        x, d, h = generate_itu_training_data(
+            num_samples=batch_size, channel_length=channel_length,
+            model_type=model_type, pilot_length=pilot_length, snr_db=snr_db
+        )
+        x, d, h = x.to(device), d.to(device), h.to(device)
+
+        h_est, _, _ = model(x, d)
+        loss = torch.mean((h_est - h) ** 2) / (torch.mean(h ** 2) + 1e-10)
+
+        if torch.isnan(loss):
+            continue
+
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+        scheduler.step()
+
+    return model
+
+
+def exp_itu_training(save_dir, device, seeds=5, num_test=200):
+    """Train LISTA on ITU channels and test on the same channels."""
+    print("\n" + "=" * 60)
+    print("ITU CHANNEL TRAINING EXPERIMENTS")
+    print("=" * 60)
+
+    N, L, pilot, snr = 64, 8, 128, 20
+    channel_models = {
+        'ITU PedA': 'peda',
+        'ITU VehA': 'veha',
+    }
+
+    all_results = {}
+
+    for model_name, model_type in channel_models.items():
+        print(f"\n--- {model_name} ---")
+        lista_vals = []
+
+        for seed in range(seeds):
+            print(f"  Seed {seed+1}/{seeds}: Training LISTA on {model_name}...")
+            torch.manual_seed(seed * 42)
+            np.random.seed(seed * 42)
+
+            # Train LISTA on ITU channels
+            model = LISTA(N, L)
+            model = train_model_itu(
+                model, N, model_type, pilot, snr,
+                epochs=200, batch_size=64, device=device
+            )
+            model.eval()
+
+            # Test on same ITU channel model
+            h_test = generate_itu_channel(N, model=model_type, num_samples=num_test)
+            x_test = torch.randint(0, 2, (num_test, pilot)).float() * 2 - 1
+            d_list = []
+            for i in range(num_test):
+                conv = np.convolve(x_test[i].numpy(), h_test[i].numpy(), mode='full')
+                d_list.append(conv[:pilot])
+            d_test = torch.tensor(np.array(d_list), dtype=torch.float32)
+            sig_power = torch.mean(d_test ** 2)
+            noise_power = sig_power / (10 ** (snr / 10))
+            noise = torch.randn_like(d_test) * torch.sqrt(noise_power)
+            d_test = d_test + noise
+
+            with torch.no_grad():
+                h_est, _, _ = model(x_test.to(device), d_test.to(device))
+            nmse_lista = compute_nmse_db(h_est.cpu(), h_test)
+            lista_vals.append(nmse_lista)
+            print(f"    LISTA (ITU-trained): {nmse_lista:.2f} dB")
+
+            # Baselines (only for first seed, same for all seeds)
+            if seed == 0:
+                base = evaluate_baselines(x_test, d_test, h_test, N, sparsity=6)  # ITU has ~6 taps
+                all_results[model_name] = base.copy()
+
+        if model_name not in all_results:
+            all_results[model_name] = {}
+        all_results[model_name]['LISTA_itu'] = {
+            'mean': float(np.mean(lista_vals)),
+            'std': float(np.std(lista_vals)),
+            'values': [float(v) for v in lista_vals]
+        }
+
+        print(f"\n  {model_name} Summary:")
+        print(f"    OMP:   {all_results[model_name].get('OMP', 0):.2f} dB")
+        print(f"    LASSO: {all_results[model_name].get('LASSO', 0):.2f} dB")
+        print(f"    LMS:   {all_results[model_name].get('LMS', 0):.2f} dB")
+        print(f"    NLMS:  {all_results[model_name].get('NLMS', 0):.2f} dB")
+        print(f"    LISTA (ITU-trained): {np.mean(lista_vals):.2f} ± {np.std(lista_vals):.2f} dB")
+
+    # Save results
+    os.makedirs(save_dir, exist_ok=True)
+    save_results = {}
+    for k, v in all_results.items():
+        save_results[k] = {}
+        for k2, v2 in v.items():
+            if isinstance(v2, dict) and 'mean' in v2:
+                save_results[k][k2] = v2
+            elif isinstance(v2, (float, int)):
+                save_results[k][k2] = float(v2)
+    with open(os.path.join(save_dir, 'itu_training.json'), 'w') as f:
+        json.dump(save_results, f, indent=2)
+
+    print(f"\nSaved to {save_dir}/itu_training.json")
+
+
+# ============================================================
 # Main
 # ============================================================
 
 def main():
     parser = argparse.ArgumentParser(description='Revision experiments for LISTA paper')
     parser.add_argument('--experiment', type=str, default='all',
-                        choices=['ablation', 'gen_sparsity', 'gen_snr', 'runtime', 'itu', 'depth', 'channellen', 'generalization', 'all'])
+                        choices=['ablation', 'gen_sparsity', 'gen_snr', 'runtime', 'itu', 'itu_train', 'depth', 'channellen', 'generalization', 'all'])
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--seeds', type=int, default=5, help='Number of random seeds')
     parser.add_argument('--num_test', type=int, default=200, help='Test samples per experiment')
@@ -998,6 +1139,9 @@ def main():
 
     if args.experiment in ['itu', 'all']:
         exp_itu_channel(args.save_dir, device, args.seeds, args.num_test)
+
+    if args.experiment in ['itu_train', 'all']:
+        exp_itu_training(args.save_dir, device, args.seeds, args.num_test)
 
     if args.experiment in ['depth', 'all']:
         exp_depth_sweep(args.save_dir, device, args.seeds, args.num_test)
