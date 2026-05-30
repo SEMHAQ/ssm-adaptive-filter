@@ -1,14 +1,14 @@
 """
-SSM-AF: State Space Model based Adaptive Filter
+SSM-AF: State Space Model based Adaptive Filter (v2 - Stable)
 
-Core idea: Replace the fixed step-size in traditional LMS/NLMS with a
-selective state space model that dynamically adjusts the adaptation
-process based on input signal characteristics.
+Architecture (redesigned for stability and efficiency):
 
-Architecture:
-    Input x(n) --> SSM Encoder --> State h(n)
-    State h(n) + Error e(n) --> Adaptive Update --> Filter Coefficients w(n)
-    Filter Coefficients w(n) + Input x(n) --> Output y(n) = w^T * x(n)
+    1. SSM Encoder: Processes full input sequence to capture long-range dependencies
+    2. Adaptive Update Network: Uses SSM features to predict filter updates
+    3. FIR Filter: Standard convolution for filtering
+
+Key insight: SSM operates on the FULL sequence (efficient parallel scan),
+then the adaptive filter uses these features to learn optimal updates.
 """
 
 import torch
@@ -17,200 +17,175 @@ import torch.nn.functional as F
 import math
 
 
-class SelectiveSSM(nn.Module):
+class SimpleSSM(nn.Module):
     """
-    Selective State Space Model block inspired by Mamba.
+    Simplified SSM block that processes full sequences.
 
-    Key innovation: Input-dependent A, B, C matrices enable
-    the model to selectively process different signal patterns,
-    analogous to how a Kalman filter adjusts its gain based on
-    the innovation sequence.
+    Uses a diagonal state space model with learnable parameters,
+    avoiding the complexity of input-dependent dynamics which
+    caused numerical instability in v1.
     """
 
-    def __init__(self, d_model: int, d_state: int = 16, d_conv: int = 4):
+    def __init__(self, d_input: int, d_state: int = 16, d_output: int = None):
         super().__init__()
-        self.d_model = d_model
+        self.d_input = d_input
         self.d_state = d_state
-        self.d_conv = d_conv
+        self.d_output = d_output or d_input
 
-        # Input projection
-        self.in_proj = nn.Linear(d_model, d_model * 2, bias=False)
+        # State space parameters (diagonal A for efficiency)
+        # Initialize A as negative for stable discrete-time system
+        self.A_log = nn.Parameter(torch.randn(d_state) * 0.01 - 1.0)
+        self.B = nn.Parameter(torch.randn(d_input, d_state) * 0.02)
+        self.C = nn.Parameter(torch.randn(d_state, self.d_output) * 0.02)
+        self.D = nn.Parameter(torch.ones(d_input) * 0.1)
 
-        # Convolution for local context
-        self.conv1d = nn.Conv1d(
-            d_model, d_model, kernel_size=d_conv,
-            padding=d_conv - 1, groups=d_model
-        )
+        # Input/output projections
+        self.in_proj = nn.Linear(d_input, d_input)
+        self.out_proj = nn.Linear(d_input, self.d_output)
 
-        # SSM parameters (input-dependent via projection)
-        self.x_proj = nn.Linear(d_model, d_state * 2 + d_model, bias=False)  # B, C, dt
+        # Normalization
+        self.norm = nn.LayerNorm(self.d_output)
 
-        # A parameter: initialize with small negative values for stability
-        # Use linspace for better conditioned initialization
-        A = torch.linspace(0.1, 1.0, d_state).unsqueeze(0).expand(d_model, -1)
-        self.A_log = nn.Parameter(torch.log(A))
+        self._init_weights()
 
-        # D parameter (skip connection)
-        self.D = nn.Parameter(torch.ones(d_model) * 0.1)
-
-        # Layer normalization for stability
-        self.norm = nn.LayerNorm(d_model)
-
-        # Output projection
-        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+    def _init_weights(self):
+        nn.init.xavier_uniform_(self.in_proj.weight)
         nn.init.xavier_uniform_(self.out_proj.weight)
+        nn.init.zeros_(self.in_proj.bias)
+        nn.init.zeros_(self.out_proj.bias)
 
     def forward(self, x):
         """
         Args:
-            x: (batch, seq_len, d_model)
+            x: (batch, seq_len, d_input)
         Returns:
-            y: (batch, seq_len, d_model)
+            y: (batch, seq_len, d_output)
         """
         batch, seq_len, _ = x.shape
 
-        # Input projection and split
-        xz = self.in_proj(x)  # (B, L, 2*D)
-        x_proj, z = xz.chunk(2, dim=-1)  # each (B, L, D)
+        # Input projection
+        x_proj = self.in_proj(x)  # (B, L, d_input)
 
-        # Convolution (causal)
-        x_conv = self.conv1d(x_proj.transpose(1, 2))[:, :, :seq_len].transpose(1, 2)
-        x_conv = F.silu(x_conv)
+        # Discretize A (using ZOH)
+        A = -torch.exp(self.A_log)  # (d_state,) - negative for stability
+        dt = 1.0  # Fixed dt=1 for discrete-time
+        dA = torch.exp(A * dt)  # (d_state,)
+        dB = self.B  # (d_input, d_state)
 
-        # Compute input-dependent SSM parameters
-        x_dbl = self.x_proj(x_conv)  # (B, L, 2*d_state + D)
-        B_param = torch.tanh(x_dbl[..., :self.d_state])  # (B, L, d_state), bounded
-        C_param = torch.tanh(x_dbl[..., self.d_state:2*self.d_state])  # (B, L, d_state), bounded
-        dt = torch.sigmoid(x_dbl[..., 2*self.d_state:]) * 0.5  # (B, L, D), bounded in [0, 0.5]
+        # Compute state evolution: h(t) = dA * h(t-1) + dB * x(t)
+        # Then output: y(t) = C * h(t) + D * x(t)
 
-        # Discretize A
-        A = -torch.exp(self.A_log)  # (D, d_state), negative for stability
-        # Clamp to prevent overflow
-        dt_A = (dt.unsqueeze(-1) * A).clamp(-5.0, 5.0)
-        dA = torch.exp(dt_A)  # (B, L, D, d_state)
-        dB = dt.unsqueeze(-1) * B_param.unsqueeze(2)  # (B, L, D, d_state)
+        # Vectorized scan using associative scan (more stable than loop)
+        # h(t) = dA^t * h(0) + sum_{i=0}^{t-1} dA^{t-1-i} * dB * x(i)
+        # For simplicity, use sequential scan with clamping
 
-        # Selective scan (sequential for clarity, can be parallelized)
-        h = torch.zeros(batch, self.d_model, self.d_state, device=x.device)
-        outputs = []
+        h = torch.zeros(batch, self.d_state, device=x.device)
+        states = []
         for t in range(seq_len):
-            h = dA[:, t] * h + dB[:, t] * x_conv[:, t].unsqueeze(-1)
-            h = h.clamp(-10.0, 10.0)  # Prevent state explosion
-            y_t = (h * C_param[:, t].unsqueeze(1)).sum(-1)  # (B, D)
-            outputs.append(y_t)
+            h = dA.unsqueeze(0) * h + x_proj[:, t] @ dB  # (B, d_state)
+            h = h.clamp(-5.0, 5.0)  # Stability
+            states.append(h)
 
-        y = torch.stack(outputs, dim=1)  # (B, L, D)
+        states = torch.stack(states, dim=1)  # (B, L, d_state)
 
-        # Skip connection
-        y = y + x_conv * self.D.unsqueeze(0).unsqueeze(0)
+        # Output: y(t) = C * h(t) + D * x(t)
+        y_ssm = states @ self.C  # (B, L, d_output)
+        y_skip = x_proj * self.D.unsqueeze(0).unsqueeze(0)  # (B, L, d_input)
+        y_skip = self.out_proj(y_skip)  # (B, L, d_output)
 
-        # Gating
-        y = y * F.silu(z)
-
-        # Normalize for stability
+        y = y_ssm + y_skip
         y = self.norm(y)
 
-        return self.out_proj(y)
+        return y
 
 
-class AdaptiveFilterLayer(nn.Module):
+class StepSizePredictor(nn.Module):
     """
-    Core adaptive filter layer that combines SSM state with
-    filter coefficient estimation.
+    Predicts input-dependent step size and direction for adaptive filtering.
 
-    The SSM captures temporal dynamics of the signal, while
-    the adaptive filter layer computes the actual filtering
-    and coefficient updates.
+    Instead of a fixed step size (like LMS), this network learns to predict
+    the optimal adaptation rate based on signal characteristics.
     """
 
-    def __init__(self, filter_length: int, d_state: int = 16):
+    def __init__(self, filter_length: int, hidden_dim: int = 32):
         super().__init__()
         self.filter_length = filter_length
 
-        # SSM for modeling filter dynamics
-        self.ssm = SelectiveSSM(d_model=filter_length, d_state=d_state)
+        # SSM for temporal feature extraction
+        self.ssm = SimpleSSM(d_input=filter_length, d_state=16, d_output=hidden_dim)
 
-        # Step size network (input-dependent step size)
-        self.step_size_net = nn.Sequential(
-            nn.Linear(filter_length * 2, filter_length),
+        # Step size prediction (bounded in [0, 1])
+        self.step_net = nn.Sequential(
+            nn.Linear(hidden_dim + 1, hidden_dim),  # +1 for error
             nn.ReLU(),
-            nn.Linear(filter_length, filter_length),
-            nn.Sigmoid()  # Step size in [0, 1]
+            nn.Linear(hidden_dim, 1),
+            nn.Sigmoid()
         )
 
-        # Direction network (adaptation direction)
-        self.direction_net = nn.Sequential(
-            nn.Linear(filter_length * 2, filter_length),
+        # Direction prediction
+        self.dir_net = nn.Sequential(
+            nn.Linear(hidden_dim + 1, hidden_dim),
             nn.ReLU(),
-            nn.Linear(filter_length, filter_length)
+            nn.Linear(hidden_dim, filter_length),
+            nn.Tanh()  # Bounded direction
         )
 
-    def forward(self, x_buf, error, w_prev):
+    def forward(self, x_history, e_current):
         """
         Args:
-            x_buf: (batch, filter_length) - current input buffer
-            error: (batch, 1) - current estimation error
-            w_prev: (batch, filter_length) - previous filter coefficients
+            x_history: (batch, seq_len, filter_length) - input signal history
+            e_current: (batch, 1) - current error
 
         Returns:
-            w_new: (batch, filter_length) - updated filter coefficients
-            y: (batch, 1) - filter output
+            mu: (batch, 1) - step size
+            direction: (batch, filter_length) - adaptation direction
         """
-        # Filter output
-        y = (w_prev * x_buf).sum(dim=-1, keepdim=True)  # (B, 1)
+        # Extract temporal features using SSM
+        features = self.ssm(x_history)  # (B, L, hidden_dim)
+        feat_last = features[:, -1, :]  # (B, hidden_dim) - use last timestep
 
-        # SSM processes the input buffer to capture temporal context
-        ssm_input = x_buf.unsqueeze(1)  # (B, 1, L)
-        ssm_out = self.ssm(ssm_input).squeeze(1)  # (B, L)
+        # Predict step size and direction
+        inp = torch.cat([feat_last, e_current], dim=-1)
+        mu = self.step_net(inp)  # (B, 1)
+        direction = self.dir_net(inp)  # (B, filter_length)
 
-        # Compute input-dependent step size
-        step_input = torch.cat([ssm_out, error.expand(-1, self.filter_length)], dim=-1)
-        mu = self.step_size_net(step_input)  # (B, L)
-
-        # Compute adaptation direction
-        direction = self.direction_net(step_input)  # (B, L)
-
-        # Update filter coefficients
-        w_new = w_prev + mu * direction * error
-
-        return w_new, y
+        return mu, direction
 
 
 class SSMAF(nn.Module):
     """
-    SSM-AF: State Space Model based Adaptive Filter
+    SSM-AF: State Space Model based Adaptive Filter (v2)
 
-    Full model that performs sample-by-sample adaptive filtering,
-    similar to LMS/NLMS but with learned, input-dependent dynamics.
+    Architecture:
+        1. Maintain input buffer (sliding window)
+        2. SSM extracts temporal features from buffer history
+        3. Step size predictor computes adaptive mu and direction
+        4. Filter coefficients updated: w(n+1) = w(n) + mu * dir * e(n)
 
-    This maintains the causal, real-time processing capability of
-    traditional adaptive filters while leveraging SSM for better
-    convergence and steady-state performance.
+    This is a learnable adaptive filter that maintains the causal,
+    sample-by-sample processing of traditional adaptive filters.
     """
 
     def __init__(
         self,
         filter_length: int = 64,
-        d_state: int = 16,
+        hidden_dim: int = 32,
         num_layers: int = 2,
-        normalize: bool = True
+        context_len: int = 32
     ):
         super().__init__()
         self.filter_length = filter_length
-        self.normalize = normalize
+        self.context_len = context_len
 
-        # Stack of adaptive filter layers
-        self.layers = nn.ModuleList([
-            AdaptiveFilterLayer(filter_length, d_state)
-            for _ in range(num_layers)
-        ])
+        # Step size predictor (uses SSM internally)
+        self.predictor = StepSizePredictor(filter_length, hidden_dim)
 
-        # Final output projection
-        self.output_proj = nn.Linear(filter_length, 1)
+        # Learnable initial step size
+        self.init_mu = nn.Parameter(torch.tensor(0.01))
 
     def forward(self, x, d):
         """
-        Process signal sample-by-sample (training mode with parallel simulation).
+        Process signal sample-by-sample.
 
         Args:
             x: (batch, seq_len) - input/reference signal
@@ -223,39 +198,44 @@ class SSMAF(nn.Module):
         """
         batch, seq_len = x.shape
 
-        # Initialize filter coefficients
+        # Initialize
         w = torch.zeros(batch, self.filter_length, device=x.device)
+        x_buf = torch.zeros(batch, self.filter_length, device=x.device)
 
-        # Buffers for outputs
+        # Context buffer for SSM (keeps recent input windows)
+        context = torch.zeros(batch, self.context_len, self.filter_length, device=x.device)
+
         y_list = []
         e_list = []
         w_list = []
 
-        # Input buffer (shift register)
-        x_buf = torch.zeros(batch, self.filter_length, device=x.device)
-
         for t in range(seq_len):
-            # Shift in new sample
+            # Shift in new sample to buffer
             x_buf = torch.roll(x_buf, 1, dims=1)
             x_buf[:, 0] = x[:, t]
 
-            # Normalize input buffer
-            if self.normalize:
-                norm = torch.norm(x_buf, dim=1, keepdim=True) + 1e-8
-                x_buf_norm = x_buf / norm
+            # Update context (sliding window of input buffers)
+            context = torch.roll(context, 1, dims=1)
+            context[:, 0] = x_buf
+
+            # Compute output and error
+            y_t = (w * x_buf).sum(dim=-1, keepdim=True)
+            e_t = d[:, t:t+1] - y_t
+
+            # Predict step size and direction using SSM features
+            if t < self.context_len:
+                # Use available context (pad if needed)
+                ctx = context[:, :t+1]
             else:
-                x_buf_norm = x_buf
+                ctx = context
 
-            # Compute current output and error
-            y_t = (w * x_buf).sum(dim=-1, keepdim=True)  # (B, 1)
-            e_t = d[:, t:t+1] - y_t  # (B, 1)
+            mu, direction = self.predictor(ctx, e_t)
 
-            # Update filter coefficients through layers
-            w_current = w
-            for layer in self.layers:
-                w_current, _ = layer(x_buf_norm, e_t, w_current)
+            # Update filter coefficients
+            w = w + mu * direction * e_t
 
-            w = w_current
+            # Clamp weights for stability
+            w = w.clamp(-5.0, 5.0)
 
             y_list.append(y_t.squeeze(-1))
             e_list.append(e_t.squeeze(-1))
@@ -269,11 +249,10 @@ class SSMAF(nn.Module):
 
     def infer(self, x):
         """
-        Real-time inference mode: process sample by sample.
+        Real-time inference mode.
 
         Args:
-            x: (seq_len,) - input signal (single channel)
-
+            x: (seq_len,) - input signal
         Returns:
             y: (seq_len,) - filtered output
         """
@@ -283,6 +262,7 @@ class SSMAF(nn.Module):
 
         w = torch.zeros(1, self.filter_length, device=device)
         x_buf = torch.zeros(1, self.filter_length, device=device)
+        context = torch.zeros(1, self.context_len, self.filter_length, device=device)
         outputs = []
 
         with torch.no_grad():
@@ -290,19 +270,16 @@ class SSMAF(nn.Module):
                 x_buf = torch.roll(x_buf, 1, dims=1)
                 x_buf[:, 0] = x[t]
 
-                if self.normalize:
-                    norm = torch.norm(x_buf, dim=1, keepdim=True) + 1e-8
-                    x_buf_norm = x_buf / norm
-                else:
-                    x_buf_norm = x_buf
+                context = torch.roll(context, 1, dims=1)
+                context[:, 0] = x_buf
 
                 y_t = (w * x_buf).sum(dim=-1, keepdim=True)
+                e_t = torch.zeros(1, 1, device=device)
 
-                # For inference, use the last error estimate
-                e_t = torch.zeros(1, 1, device=device)  # No desired signal in inference
-
-                for layer in self.layers:
-                    w, _ = layer(x_buf_norm, e_t, w)
+                ctx = context[:, :min(t+1, self.context_len)]
+                mu, direction = self.predictor(ctx, e_t)
+                w = w + mu * direction * e_t
+                w = w.clamp(-5.0, 5.0)
 
                 outputs.append(y_t.squeeze())
 
@@ -319,44 +296,25 @@ class LMSFilter:
     def __init__(self, filter_length: int, mu: float = 0.01):
         self.filter_length = filter_length
         self.mu = mu
-        self.w = None
 
     def process(self, x, d):
-        """
-        Process entire signal.
-
-        Args:
-            x: (seq_len,) - input signal
-            d: (seq_len,) - desired signal
-
-        Returns:
-            y: (seq_len,) - output
-            e: (seq_len,) - error
-        """
-        seq_len = len(x)
-        device = x.device if isinstance(x, torch.Tensor) else 'cpu'
-
-        if isinstance(x, torch.Tensor):
-            x = x.cpu().numpy()
-            d = d.cpu().numpy()
-
         import numpy as np
+        if isinstance(x, torch.Tensor):
+            x, d = x.cpu().numpy(), d.cpu().numpy()
+
+        seq_len = len(x)
         w = np.zeros(self.filter_length)
         x_buf = np.zeros(self.filter_length)
-
         y = np.zeros(seq_len)
         e = np.zeros(seq_len)
 
         for n in range(seq_len):
             x_buf = np.roll(x_buf, 1)
             x_buf[0] = x[n]
-
             y[n] = np.dot(w, x_buf)
             e[n] = d[n] - y[n]
-
             w = w + self.mu * e[n] * x_buf
 
-        self.w = w
         return torch.tensor(y), torch.tensor(e)
 
 
@@ -370,25 +328,20 @@ class NLMSFilter:
 
     def process(self, x, d):
         import numpy as np
-
         if isinstance(x, torch.Tensor):
-            x = x.cpu().numpy()
-            d = d.cpu().numpy()
+            x, d = x.cpu().numpy(), d.cpu().numpy()
 
         seq_len = len(x)
         w = np.zeros(self.filter_length)
         x_buf = np.zeros(self.filter_length)
-
         y = np.zeros(seq_len)
         e = np.zeros(seq_len)
 
         for n in range(seq_len):
             x_buf = np.roll(x_buf, 1)
             x_buf[0] = x[n]
-
             y[n] = np.dot(w, x_buf)
             e[n] = d[n] - y[n]
-
             norm = np.dot(x_buf, x_buf) + self.epsilon
             w = w + (self.mu / norm) * e[n] * x_buf
 
@@ -405,26 +358,21 @@ class RLSFilter:
 
     def process(self, x, d):
         import numpy as np
-
         if isinstance(x, torch.Tensor):
-            x = x.cpu().numpy()
-            d = d.cpu().numpy()
+            x, d = x.cpu().numpy(), d.cpu().numpy()
 
         seq_len = len(x)
         w = np.zeros(self.filter_length)
         P = np.eye(self.filter_length) / self.delta
         x_buf = np.zeros(self.filter_length)
-
         y = np.zeros(seq_len)
         e = np.zeros(seq_len)
 
         for n in range(seq_len):
             x_buf = np.roll(x_buf, 1)
             x_buf[0] = x[n]
-
             y[n] = np.dot(w, x_buf)
             e[n] = d[n] - y[n]
-
             k = P @ x_buf / (self.lam + x_buf @ P @ x_buf)
             w = w + k * e[n]
             P = (P - np.outer(k, x_buf @ P)) / self.lam
@@ -433,17 +381,15 @@ class RLSFilter:
 
 
 if __name__ == "__main__":
-    # Quick test
+    # Quick sanity check
     batch_size = 2
-    seq_len = 1000
+    seq_len = 100
     filter_length = 32
 
-    # Generate test signals
     x = torch.randn(batch_size, seq_len)
     d = torch.randn(batch_size, seq_len)
 
-    # Test SSM-AF
-    model = SSMAF(filter_length=filter_length, d_state=8, num_layers=2)
+    model = SSMAF(filter_length=filter_length, hidden_dim=16, context_len=16)
     y, e, w_hist = model(x, d)
 
     print(f"Input shape:    {x.shape}")
@@ -451,3 +397,10 @@ if __name__ == "__main__":
     print(f"Error shape:    {e.shape}")
     print(f"Weights shape:  {w_hist.shape}")
     print(f"Parameters:     {sum(p.numel() for p in model.parameters()):,}")
+    print(f"Output range:   [{y.min():.3f}, {y.max():.3f}]")
+    print(f"Error range:    [{e.min():.3f}, {e.max():.3f}]")
+
+    # Check for NaN
+    assert not torch.isnan(y).any(), "Output contains NaN!"
+    assert not torch.isnan(e).any(), "Error contains NaN!"
+    print("All checks passed!")

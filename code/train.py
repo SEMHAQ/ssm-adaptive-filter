@@ -49,12 +49,12 @@ def compute_erle(d: torch.Tensor, e: torch.Tensor) -> float:
 def train_ssm_af(
     task: str,
     filter_length: int = 64,
-    d_state: int = 16,
-    num_layers: int = 2,
+    hidden_dim: int = 32,
+    context_len: int = 32,
     epochs: int = 100,
-    batch_size: int = 16,
-    seq_len: int = 4000,
-    lr: float = 1e-3,
+    batch_size: int = 4,
+    seq_len: int = 1000,
+    lr: float = 3e-4,
     device: str = 'cuda',
     save_dir: str = 'checkpoints'
 ):
@@ -65,9 +65,8 @@ def train_ssm_af(
     # Initialize model
     model = SSMAF(
         filter_length=filter_length,
-        d_state=d_state,
-        num_layers=num_layers,
-        normalize=True
+        hidden_dim=hidden_dim,
+        context_len=context_len
     ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -225,8 +224,8 @@ def main():
                         choices=['echo_cancellation', 'channel_equalization', 'noise_reduction'],
                         help='Adaptive filtering task')
     parser.add_argument('--filter_length', type=int, default=64, help='Filter length')
-    parser.add_argument('--d_state', type=int, default=16, help='SSM state dimension')
-    parser.add_argument('--num_layers', type=int, default=2, help='Number of SSM layers')
+    parser.add_argument('--hidden_dim', type=int, default=32, help='Hidden dimension')
+    parser.add_argument('--context_len', type=int, default=32, help='Context window length')
     parser.add_argument('--epochs', type=int, default=100, help='Training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
     parser.add_argument('--seq_len', type=int, default=1000, help='Sequence length')
@@ -240,8 +239,8 @@ def main():
     model, history = train_ssm_af(
         task=args.task,
         filter_length=args.filter_length,
-        d_state=args.d_state,
-        num_layers=args.num_layers,
+        hidden_dim=args.hidden_dim,
+        context_len=args.context_len,
         epochs=args.epochs,
         batch_size=args.batch_size,
         seq_len=args.seq_len,
