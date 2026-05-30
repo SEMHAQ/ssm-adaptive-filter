@@ -495,6 +495,85 @@ def generate_loudspeaker_echo_data(
     return x, d, h
 
 
+def generate_sparse_channel_data(
+    num_samples: int = 10000,
+    channel_length: int = 64,
+    sparsity: int = 5,
+    snr_db: float = 20.0,
+    pilot_length: int = None
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Generate sparse multipath channel estimation data.
+
+    Setup: Pilot signal x passes through sparse channel h to produce
+    received signal d = x * h + noise. Goal: estimate h from (x, d).
+
+    The channel h has only K non-zero taps out of N total (sparse).
+    Classical LMS/NLMS ignores sparsity -> suboptimal.
+    Deep-unfolded ISTA (LISTA) learns to exploit sparsity -> better.
+
+    Args:
+        num_samples: Number of channel realizations
+        channel_length: Length of channel impulse response (N)
+        sparsity: Number of non-zero taps (K)
+        snr_db: Signal-to-noise ratio
+        pilot_length: Length of pilot signal (default: 2 * channel_length)
+
+    Returns:
+        x: (num_samples, pilot_length) - pilot/reference signal
+        d: (num_samples, pilot_length) - received signal (y = x * h + noise)
+        h: (num_samples, channel_length) - true sparse channel
+    """
+    if pilot_length is None:
+        pilot_length = 2 * channel_length
+
+    # Generate sparse channels
+    h = torch.zeros(num_samples, channel_length)
+    for i in range(num_samples):
+        # Random tap positions
+        tap_positions = torch.randperm(channel_length)[:sparsity]
+        # Random tap values (exponentially decaying)
+        tap_values = torch.randn(sparsity) * torch.exp(
+            -torch.arange(sparsity).float() * 0.2
+        )
+        h[i, tap_positions] = tap_values
+
+    # Generate pilot signals (BPSK)
+    x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
+
+    # Convolve: d = x * h + noise
+    d = torch.zeros(num_samples, pilot_length)
+    for i in range(num_samples):
+        x_i = x[i].unsqueeze(0).unsqueeze(0)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)
+        d[i] = torch.nn.functional.conv1d(
+            x_i, h_i, padding=channel_length - 1
+        ).squeeze()[:pilot_length]
+
+    # Add noise
+    noise_power = 10 ** (-snr_db / 10)
+    noise = torch.randn(num_samples, pilot_length) * np.sqrt(noise_power)
+    d = d + noise
+
+    return x, d, h
+
+
+def generate_sparse_channel_test(
+    channel_length: int = 64,
+    sparsity: int = 5,
+    snr_db: float = 20.0,
+    num_test: int = 100
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Generate test data with fixed seed for reproducibility."""
+    torch.manual_seed(42)
+    return generate_sparse_channel_data(
+        num_samples=num_test,
+        channel_length=channel_length,
+        sparsity=sparsity,
+        snr_db=snr_db
+    )
+
+
 if __name__ == "__main__":
     # Test data generation
     print("Generating echo cancellation data...")

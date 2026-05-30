@@ -537,6 +537,223 @@ class TCNFilter(nn.Module):
         return y, e, w_history
 
 
+class SoftThreshold(nn.Module):
+    """Learnable soft thresholding: sign(x) * max(|x| - theta, 0)"""
+    def __init__(self, init_threshold=0.1):
+        super().__init__()
+        self.threshold = nn.Parameter(torch.tensor(init_threshold))
+
+    def forward(self, x):
+        return torch.sign(x) * torch.relu(torch.abs(x) - self.threshold)
+
+
+class LISTALayer(nn.Module):
+    """One iteration of learned ISTA: h = soft_threshold(h - step * grad, threshold)"""
+    def __init__(self, channel_length, init_step=0.1, init_threshold=0.1):
+        super().__init__()
+        self.step = nn.Parameter(torch.tensor(init_step))
+        self.threshold = SoftThreshold(init_threshold)
+        # Optional: learnable linear transform (LISTA variant)
+        self.W = nn.Linear(channel_length, channel_length, bias=False)
+        nn.init.eye_(self.W.weight)
+
+    def forward(self, h, grad):
+        # Update: h = soft_threshold(W*h - step*grad, threshold)
+        h_new = self.W(h) - self.step * grad
+        return self.threshold(h_new)
+
+
+class LISTA(nn.Module):
+    """
+    LISTA: Learned Iterative Shrinkage-Thresholding Algorithm.
+
+    Deep unfolding of ISTA for sparse channel estimation.
+    Each ISTA iteration becomes one neural network layer with
+    learnable step size and threshold.
+
+    Architecture:
+    - Input: pilot signal x, received signal d
+    - Compute gradient: grad = X^T(Xh - d)
+    - Apply soft thresholding with learnable parameters
+    - Repeat for K layers (iterations)
+
+    Advantages over classical ISTA:
+    - Fewer iterations needed (K=10 vs K=100+)
+    - Learned parameters adapt to channel statistics
+    - Better recovery quality
+
+    Advantages over LMS/NLMS:
+    - Explicitly exploits sparsity
+    - Batch processing (not sample-by-sample)
+    - Provably better for sparse channels
+    """
+
+    def __init__(self, channel_length: int = 64, num_layers: int = 10,
+                 **kwargs):
+        super().__init__()
+        self.channel_length = channel_length
+        self.num_layers = num_layers
+
+        # LISTA layers
+        self.layers = nn.ModuleList([
+            LISTALayer(channel_length, init_step=0.1, init_threshold=0.1)
+            for _ in range(num_layers)
+        ])
+
+    def forward(self, x, d, num_steps=None):
+        """
+        Args:
+            x: (B, pilot_len) - pilot signal
+            d: (B, pilot_len) - received signal
+        Returns:
+            h_est: (B, channel_length) - estimated channel
+            d_recon: (B, pilot_len) - reconstructed signal
+            e: (B, pilot_len) - error signal
+        """
+        batch = x.shape[0]
+        device = x.device
+
+        # Build convolution matrix A (Toeplitz structure)
+        # A @ h = x * h (convolution)
+        # For efficiency, use FFT-based convolution
+        pilot_len = x.shape[1]
+        fft_len = pilot_len + self.channel_length - 1
+
+        # FFT of pilot signal
+        X_fft = torch.fft.rfft(x, n=fft_len)
+
+        # Initialize h estimate
+        h = torch.zeros(batch, self.channel_length, device=device)
+
+        for layer in self.layers:
+            # Compute d_recon = x * h (convolution via FFT)
+            H_fft = torch.fft.rfft(h, n=fft_len)
+            d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
+            d_recon = d_recon_full[:, :pilot_len]
+
+            # Gradient: grad = X^T(Xh - d) = x * (d_recon - d) (correlation)
+            residual = d_recon - d
+            residual_padded = torch.nn.functional.pad(
+                residual, (self.channel_length - 1, 0)
+            )
+            # Correlation via FFT
+            R_fft = torch.fft.rfft(residual_padded, n=fft_len)
+            grad_full = torch.fft.irfft(
+                torch.conj(X_fft) * R_fft, n=fft_len
+            )
+            grad = grad_full[:, :self.channel_length] / pilot_len
+
+            # LISTA update
+            h = layer(h, grad)
+
+        # Final reconstruction
+        H_fft = torch.fft.rfft(h, n=fft_len)
+        d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
+        d_recon = d_recon_full[:, :pilot_len]
+        e = d - d_recon
+
+        return h, d_recon, e
+
+
+class OMPFilter:
+    """Orthogonal Matching Pursuit - greedy sparse recovery baseline."""
+
+    def __init__(self, channel_length: int, sparsity: int):
+        self.channel_length = channel_length
+        self.sparsity = sparsity
+
+    def estimate(self, x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        """
+        Estimate sparse channel using OMP.
+
+        Args:
+            x: (pilot_len,) - pilot signal
+            d: (pilot_len,) - received signal
+        Returns:
+            h: (channel_length,) - estimated channel
+        """
+        x_np = x.cpu().numpy()
+        d_np = d.cpu().numpy()
+        pilot_len = len(x_np)
+
+        # Build convolution dictionary
+        A = np.zeros((pilot_len, self.channel_length))
+        for j in range(self.channel_length):
+            A[j:j + pilot_len, j] if j + pilot_len <= pilot_len else None
+            # Shifted version of x
+            col = np.zeros(pilot_len)
+            col[:min(pilot_len, pilot_len - j)] = x_np[j:min(j + pilot_len, pilot_len)]
+            A[:, j] = col
+
+        # Actually, build proper Toeplitz matrix
+        A = np.zeros((pilot_len, self.channel_length))
+        for i in range(pilot_len):
+            for j in range(self.channel_length):
+                if i - j >= 0:
+                    A[i, j] = x_np[i - j]
+
+        # OMP
+        r = d_np.copy()  # residual
+        support = []
+        h_est = np.zeros(self.channel_length)
+
+        for _ in range(self.sparsity):
+            # Find best matching atom
+            correlations = np.abs(A.T @ r)
+            correlations[support] = -1  # exclude already selected
+            new_atom = np.argmax(correlations)
+            support.append(new_atom)
+
+            # Least squares on support
+            A_support = A[:, support]
+            h_support = np.linalg.lstsq(A_support, d_np, rcond=None)[0]
+            r = d_np - A_support @ h_support
+
+        h_est[support] = h_support
+        return torch.tensor(h_est, dtype=torch.float32)
+
+
+class LASSOFilter:
+    """LASSO (L1-regularized least squares) for sparse channel estimation."""
+
+    def __init__(self, channel_length: int, lam: float = 0.01):
+        self.channel_length = channel_length
+        self.lam = lam
+
+    def estimate(self, x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        """
+        Estimate sparse channel using ISTA (LASSO solver).
+
+        Args:
+            x: (pilot_len,) - pilot signal
+            d: (pilot_len,) - received signal
+        Returns:
+            h: (channel_length,) - estimated channel
+        """
+        x_np = x.cpu().numpy()
+        d_np = d.cpu().numpy()
+        pilot_len = len(x_np)
+
+        # Build Toeplitz matrix
+        A = np.zeros((pilot_len, self.channel_length))
+        for i in range(pilot_len):
+            for j in range(self.channel_length):
+                if 0 <= i - j < pilot_len:
+                    A[i, j] = x_np[i - j]
+
+        # ISTA
+        step = 1.0 / (np.linalg.norm(A, ord=2) ** 2 + 1e-8)
+        h = np.zeros(self.channel_length)
+
+        for _ in range(200):
+            grad = A.T @ (A @ h - d_np)
+            h_new = h - step * grad
+            # Soft threshold
+            h = np.sign(h_new) * np.maximum(np.abs(h_new) - self.lam * step, 0)
+
+        return torch.tensor(h, dtype=torch.float32)
+
+
 if __name__ == "__main__":
     batch_size = 2
     seq_len = 500
