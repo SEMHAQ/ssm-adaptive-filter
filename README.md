@@ -59,10 +59,12 @@ python run_revision_experiments.py --experiment gen_sparsity   # Sparsity mismat
 python run_revision_experiments.py --experiment gen_snr        # SNR mismatch
 python run_revision_experiments.py --experiment runtime        # Inference time
 python run_revision_experiments.py --experiment itu            # ITU channel models
+python run_revision_experiments.py --experiment depth          # Depth sweep (Table 4)
+python run_revision_experiments.py --experiment channellen     # Channel length sweep (Table 3)
 python run_revision_experiments.py --experiment generalization # All generalization
 ```
 
-Output is saved to `code/res/revision/` (JSON + PDF).
+Output is saved to `code/results/revision/` (JSON + PDF).
 
 ## Methods
 

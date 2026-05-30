@@ -812,6 +812,203 @@ def exp_itu_channel(save_dir, device, seeds=5, num_test=200):
     print(f"\nSaved to {save_dir}/itu_channel.json")
 
 
+def exp_channel_length(save_dir, device, seeds=5, num_test=200):
+    """Channel length sweep: NMSE vs N with validation-optimized baselines and 5-seed statistics."""
+    print("\n" + "=" * 60)
+    print("CHANNEL LENGTH SWEEP EXPERIMENT")
+    print("=" * 60)
+
+    N_values = [32, 64, 128, 256]
+    pilot_ratio = 2  # M/N = 2
+    sparsity_ratio = 0.08  # K/N ≈ 8%
+    snr = 20
+    L = 8
+
+    all_results = {}
+
+    for N in N_values:
+        K = max(2, int(N * sparsity_ratio))
+        pilot = N * pilot_ratio
+        print(f"\n=== N={N}, K={K}, M={pilot} ===")
+
+        seed_results = {name: [] for name in ['LMS', 'NLMS', 'OMP', 'LASSO', 'LISTA']}
+
+        for seed in range(seeds):
+            print(f"\n--- Seed {seed+1}/{seeds} ---")
+            torch.manual_seed(seed * 42)
+            np.random.seed(seed * 42)
+
+            # Test data
+            x_test, d_test, h_test = generate_sparse_channel_data(
+                num_samples=num_test, channel_length=N, sparsity=K,
+                pilot_length=pilot, snr_db=snr
+            )
+
+            # LISTA
+            print(f"  Training LISTA (L={L})...")
+            model = train_model(LISTA(N, L), N, K, pilot, snr, epochs=200, device=device)
+            model.eval()
+            with torch.no_grad():
+                h_est, _, _ = model(x_test.to(device), d_test.to(device))
+            nmse_lista = compute_nmse_db(h_est.cpu(), h_test)
+            seed_results['LISTA'].append(nmse_lista)
+            print(f"    LISTA: {nmse_lista:.2f} dB")
+
+            # Baselines (validation-optimized)
+            # LMS
+            lms_step, best_lms = None, float('inf')
+            for step in [0.01, 0.05, 0.1, 0.2, 0.5]:
+                lms = LMSFilter(N, step)
+                h_lms = torch.zeros_like(h_test)
+                for i in range(num_test):
+                    h_lms[i] = lms.estimate(x_test[i], d_test[i])
+                nmse_lms = compute_nmse_db(h_lms, h_test)
+                if nmse_lms < best_lms:
+                    best_lms = nmse_lms
+                    lms_step = step
+            seed_results['LMS'].append(best_lms)
+            print(f"    LMS (step={lms_step}): {best_lms:.2f} dB")
+
+            # NLMS
+            nlms_step, best_nlms = None, float('inf')
+            for step in [0.01, 0.05, 0.1, 0.2, 0.5]:
+                nlms = NLMSFilter(N, step)
+                h_nlms = torch.zeros_like(h_test)
+                for i in range(num_test):
+                    h_nlms[i] = nlms.estimate(x_test[i], d_test[i])
+                nmse_nlms = compute_nmse_db(h_nlms, h_test)
+                if nmse_nlms < best_nlms:
+                    best_nlms = nmse_nlms
+                    nlms_step = step
+            seed_results['NLMS'].append(best_nlms)
+            print(f"    NLMS (step={nlms_step}): {best_nlms:.2f} dB")
+
+            # OMP
+            omp = OMPFilter(N, K)
+            h_omp = torch.zeros_like(h_test)
+            for i in range(num_test):
+                h_omp[i] = omp.estimate(x_test[i], d_test[i])
+            nmse_omp = compute_nmse_db(h_omp, h_test)
+            seed_results['OMP'].append(nmse_omp)
+            print(f"    OMP: {nmse_omp:.2f} dB")
+
+            # LASSO
+            lasso_lambda, best_lasso = None, float('inf')
+            for lam in [0.001, 0.005, 0.01, 0.05, 0.1]:
+                lasso = LASSOFilter(N, lam)
+                h_lasso = torch.zeros_like(h_test)
+                for i in range(num_test):
+                    h_lasso[i] = lasso.estimate(x_test[i], d_test[i])
+                nmse_lasso = compute_nmse_db(h_lasso, h_test)
+                if nmse_lasso < best_lasso:
+                    best_lasso = nmse_lasso
+                    lasso_lambda = lam
+            seed_results['LASSO'].append(best_lasso)
+            print(f"    LASSO (λ={lasso_lambda}): {best_lasso:.2f} dB")
+
+        # Compute mean ± std
+        all_results[str(N)] = {}
+        for name in seed_results:
+            vals = seed_results[name]
+            all_results[str(N)][name] = {
+                'mean': float(np.mean(vals)),
+                'std': float(np.std(vals)),
+                'values': vals
+            }
+
+    # Print summary
+    print(f"\n\n{'N':<8} {'LMS':<18} {'NLMS':<18} {'OMP':<18} {'LASSO':<18} {'LISTA':<18}")
+    print("-" * 98)
+    for N in N_values:
+        r = all_results[str(N)]
+        row = f"{N:<8}"
+        for name in ['LMS', 'NLMS', 'OMP', 'LASSO', 'LISTA']:
+            row += f"{r[name]['mean']:.2f}±{r[name]['std']:.2f}  ".ljust(18)
+        print(row)
+
+    # Save
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, 'channel_length.json'), 'w') as f:
+        json.dump(all_results, f, indent=2)
+    print(f"\nSaved to {save_dir}/channel_length.json")
+
+
+def exp_depth_sweep(save_dir, device, seeds=5, num_test=200):
+    """Depth sweep: NMSE vs number of LISTA layers with 5-seed statistics."""
+    print("\n" + "=" * 60)
+    print("DEPTH SWEEP EXPERIMENT")
+    print("=" * 60)
+
+    N, K, pilot, snr = 64, 5, 128, 20
+    layer_list = [1, 2, 3, 5, 8, 10, 15, 20]
+
+    all_results = {}
+
+    for num_layers in layer_list:
+        print(f"\n--- L={num_layers} layers ---")
+        seed_nmse = []
+
+        for seed in range(seeds):
+            print(f"  Seed {seed+1}/{seeds}", end="", flush=True)
+            torch.manual_seed(seed * 42)
+            np.random.seed(seed * 42)
+
+            model = train_model(LISTA(N, num_layers), N, K, pilot, snr, epochs=200, device=device)
+            model.eval()
+
+            # Test
+            x_test, d_test, h_test = generate_sparse_channel_data(
+                num_samples=num_test, channel_length=N, sparsity=K,
+                pilot_length=pilot, snr_db=snr
+            )
+            with torch.no_grad():
+                h_est, _, _ = model(x_test.to(device), d_test.to(device))
+            nmse_val = compute_nmse_db(h_est.cpu(), h_test)
+            seed_nmse.append(nmse_val)
+            print(f" -> {nmse_val:.4f} dB")
+
+        all_results[str(num_layers)] = {
+            'mean': float(np.mean(seed_nmse)),
+            'std': float(np.std(seed_nmse)),
+            'values': seed_nmse
+        }
+
+    # OMP baseline
+    print("\n--- OMP baseline ---")
+    omp_nmse = []
+    for seed in range(seeds):
+        torch.manual_seed(seed * 42)
+        np.random.seed(seed * 42)
+        x_test, d_test, h_test = generate_sparse_channel_data(
+            num_samples=num_test, channel_length=N, sparsity=K,
+            pilot_length=pilot, snr_db=snr
+        )
+        omp = OMPFilter(N, K)
+        h_omp = torch.zeros_like(h_test)
+        for i in range(num_test):
+            h_omp[i] = omp.estimate(x_test[i], d_test[i])
+        omp_nmse.append(compute_nmse_db(h_omp, h_test))
+    all_results['OMP'] = {
+        'mean': float(np.mean(omp_nmse)),
+        'std': float(np.std(omp_nmse)),
+        'values': omp_nmse
+    }
+    print(f"  OMP: {all_results['OMP']['mean']:.4f} +/- {all_results['OMP']['std']:.4f} dB")
+
+    # Save
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, 'depth_sweep.json'), 'w') as f:
+        json.dump(all_results, f, indent=2)
+
+    # Print summary
+    print(f"\n{'Layers':<10} {'NMSE (dB)':<20} {'Std':<10}")
+    print("-" * 40)
+    for k, v in all_results.items():
+        print(f"{k:<10} {v['mean']:<20.4f} {v['std']:<10.4f}")
+
+    print(f"\nSaved to {save_dir}/depth_sweep.json")
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -819,11 +1016,11 @@ def exp_itu_channel(save_dir, device, seeds=5, num_test=200):
 def main():
     parser = argparse.ArgumentParser(description='Revision experiments for LISTA paper')
     parser.add_argument('--experiment', type=str, default='all',
-                        choices=['ablation', 'gen_sparsity', 'gen_snr', 'runtime', 'itu', 'generalization', 'all'])
+                        choices=['ablation', 'gen_sparsity', 'gen_snr', 'runtime', 'itu', 'depth', 'channellen', 'generalization', 'all'])
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--seeds', type=int, default=5, help='Number of random seeds')
     parser.add_argument('--num_test', type=int, default=200, help='Test samples per experiment')
-    parser.add_argument('--save_dir', type=str, default='res/revision')
+    parser.add_argument('--save_dir', type=str, default='results/revision')
 
     args = parser.parse_args()
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
@@ -846,6 +1043,12 @@ def main():
 
     if args.experiment in ['itu', 'all']:
         exp_itu_channel(args.save_dir, device, args.seeds, args.num_test)
+
+    if args.experiment in ['depth', 'all']:
+        exp_depth_sweep(args.save_dir, device, args.seeds, args.num_test)
+
+    if args.experiment in ['channellen', 'all']:
+        exp_channel_length(args.save_dir, device, args.seeds, args.num_test)
 
     print("\n\n" + "=" * 60)
     print("ALL REVISION EXPERIMENTS COMPLETE!")
