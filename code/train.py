@@ -127,7 +127,7 @@ def train_ssm_af(
         elif task == 'nonlinear_echo':
             x, d, h = generate_nonlinear_echo_data(
                 num_samples=batch_size, seq_len=seq_len,
-                filter_length=filter_length, nonlinearity='tanh', nl_strength=0.9
+                filter_length=filter_length, nonlinearity='clip', nl_strength=0.95
             )
         else:
             raise ValueError(f"Unknown task: {task}")
@@ -240,7 +240,7 @@ def evaluate_baselines(task: str, filter_length: int = 64, seq_len: int = 4000):
     elif task == 'nonlinear_echo':
         x, d, h = generate_nonlinear_echo_data(
             num_samples=1, seq_len=seq_len, filter_length=filter_length,
-            nonlinearity='tanh', nl_strength=0.9
+            nonlinearity='clip', nl_strength=0.95
         )
     else:
         raise ValueError(f"Unknown task: {task}")
