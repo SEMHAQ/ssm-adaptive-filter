@@ -297,7 +297,7 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     plot_convergence_curves(results, os.path.join(fig_dir, 'convergence.pdf'))
     plot_erle_comparison(results, os.path.join(fig_dir, 'erle.pdf'))
 
-    if w_true is not None:
+    if w_true is not None and 'w_hist' in locals() and w_hist is not None:
         plot_filter_coefficients(
             w_hist.squeeze().cpu().numpy(),
             w_true,

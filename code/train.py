@@ -113,7 +113,7 @@ def train_ssm_af(
     # Stage 1: Run NLMS to get linear estimate + residual
     # Stage 2: Train TCN on residual (nonlinear component only)
     if task == 'loudspeaker_echo':
-        num_train_samples = 32
+        num_train_samples = 256
         # Generate ONE fixed echo path (deterministic seed)
         torch.manual_seed(42)
         h_fixed = _generate_itu_echo_path(1, filter_length)
