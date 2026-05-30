@@ -56,10 +56,14 @@ def train_ssm_af(
     seq_len: int = 1000,
     lr: float = 3e-4,
     device: str = 'cuda',
-    save_dir: str = 'checkpoints'
+    save_dir: str = 'res'
 ):
     """Train SSM-AF model."""
-    os.makedirs(save_dir, exist_ok=True)
+    task_dir = os.path.join(save_dir, task)
+    fig_dir = os.path.join(task_dir, 'figures')
+    ckpt_dir = os.path.join(task_dir, 'checkpoints')
+    os.makedirs(fig_dir, exist_ok=True)
+    os.makedirs(ckpt_dir, exist_ok=True)
     device = torch.device(device if torch.cuda.is_available() else 'cpu')
 
     # Initialize model
@@ -155,16 +159,27 @@ def train_ssm_af(
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': best_loss,
-            }, os.path.join(save_dir, f'best_{task}.pt'))
+            }, os.path.join(ckpt_dir, 'best.pt'))
 
     # Save final model
-    torch.save(model.state_dict(), os.path.join(save_dir, f'final_{task}.pt'))
+    torch.save(model.state_dict(), os.path.join(ckpt_dir, 'final.pt'))
 
-    # Save history
-    with open(os.path.join(save_dir, f'history_{task}.json'), 'w') as f:
-        json.dump(history, f)
+    # Save training config and final metrics
+    summary = {
+        'task': task,
+        'config': {
+            'filter_length': filter_length, 'hidden_dim': hidden_dim,
+            'context_len': context_len, 'epochs': epochs,
+            'batch_size': batch_size, 'seq_len': seq_len, 'lr': lr,
+        },
+        'final_mse_db': history['train_loss'][-1] if history['train_loss'] else None,
+        'best_loss': best_loss,
+        'history': history,
+    }
+    with open(os.path.join(task_dir, 'metrics.json'), 'w') as f:
+        json.dump(summary, f, indent=2)
 
-    print(f"\nTraining complete. Best loss: {best_loss:.6f}")
+    print(f"\nTraining complete. Results saved to {task_dir}/")
     return model, history
 
 

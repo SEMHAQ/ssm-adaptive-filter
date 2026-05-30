@@ -138,9 +138,11 @@ def compute_complexity(model: SSMAF, filter_length: int, seq_len: int) -> dict:
 
 
 def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
-                   checkpoint: str = None, device: str = 'cpu', save_dir: str = 'figures'):
+                   checkpoint: str = None, device: str = 'cpu', save_dir: str = 'res'):
     """Run full evaluation for a given task."""
-    os.makedirs(save_dir, exist_ok=True)
+    task_dir = os.path.join(save_dir, task)
+    fig_dir = os.path.join(task_dir, 'figures')
+    os.makedirs(fig_dir, exist_ok=True)
     device = torch.device(device)
 
     print(f"\n{'='*60}")
@@ -217,22 +219,23 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
         print(f"{method:<12} {data['final_mse_db']:<12.2f} {data['erle_db']:<12.2f}")
 
     # Generate plots
-    plot_convergence_curves(results, os.path.join(save_dir, f'convergence_{task}.png'))
-    plot_erle_comparison(results, os.path.join(save_dir, f'erle_{task}.png'))
+    plot_convergence_curves(results, os.path.join(fig_dir, 'convergence.pdf'))
+    plot_erle_comparison(results, os.path.join(fig_dir, 'erle.pdf'))
 
     if w_true is not None:
         plot_filter_coefficients(
             w_hist.squeeze().cpu().numpy(),
             w_true,
-            os.path.join(save_dir, f'coefficients_{task}.png'),
+            os.path.join(fig_dir, 'coefficients.pdf'),
             title=f'{task.replace("_", " ").title()}'
         )
 
     # Save results
     results_save = {k: {'erle_db': v['erle_db'], 'final_mse_db': v['final_mse_db']} for k, v in results.items()}
-    with open(os.path.join(save_dir, f'results_{task}.json'), 'w') as f:
+    with open(os.path.join(task_dir, 'eval_results.json'), 'w') as f:
         json.dump(results_save, f, indent=2)
 
+    print(f"\nResults saved to {task_dir}/")
     return results
 
 
@@ -244,7 +247,7 @@ def main():
     parser.add_argument('--seq_len', type=int, default=8000)
     parser.add_argument('--checkpoint', type=str, default=None)
     parser.add_argument('--device', type=str, default='cpu')
-    parser.add_argument('--save_dir', type=str, default='figures')
+    parser.add_argument('--save_dir', type=str, default='res')
 
     args = parser.parse_args()
 
@@ -252,7 +255,7 @@ def main():
 
     all_results = {}
     for task in tasks:
-        ckpt = args.checkpoint or f'checkpoints/best_{task}.pt'
+        ckpt = args.checkpoint or os.path.join(args.save_dir, task, 'checkpoints', 'best.pt')
         all_results[task] = run_evaluation(
             task=task,
             filter_length=args.filter_length,

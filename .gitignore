@@ -91,3 +91,6 @@ desktop.ini
 *.pem
 credentials.json
 .claude/
+
+# Results (large files, keep local)
+res/
