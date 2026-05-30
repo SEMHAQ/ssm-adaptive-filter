@@ -124,7 +124,7 @@ def train_ssm_af(
             x_i = torch.randn(seq_len)
             # Linear convolution with fixed path
             x_conv = torch.nn.functional.conv1d(
-                x_i.unsqueeze(0).unsqueeze(0), h_fixed.unsqueeze(0).unsqueeze(0),
+                x_i.unsqueeze(0).unsqueeze(0), h_fixed.squeeze().unsqueeze(0).unsqueeze(0),
                 padding=filter_length - 1
             ).squeeze()[:seq_len]
             # Nonlinear: soft clipping
