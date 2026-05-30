@@ -1,0 +1,22 @@
+{
+  "task": "sparse_channel",
+  "config": {
+    "channel_length": 64,
+    "sparsity": 5,
+    "num_layers": 10,
+    "pilot_length": 128,
+    "snr_db": 20.0,
+    "epochs": 200,
+    "batch_size": 64,
+    "lr": 0.001,
+    "device": "cuda",
+    "save_dir": "res"
+  },
+  "results": {
+    "LMS": 1.7216462765088107,
+    "NLMS": 1.636016290816851,
+    "OMP": 2.983931835526721,
+    "LASSO": 3.0074197057171403,
+    "LISTA": -0.03055482597044301
+  }
+}
