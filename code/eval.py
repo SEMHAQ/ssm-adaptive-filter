@@ -227,11 +227,15 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
     if checkpoint and os.path.exists(checkpoint):
         ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
         # Handle both checkpoint formats: full dict or direct state_dict
-        if 'model_state_dict' in ckpt:
-            model.load_state_dict(ckpt['model_state_dict'])
-        else:
-            model.load_state_dict(ckpt)
-        print(f"  Loaded checkpoint: {checkpoint}")
+        try:
+            if 'model_state_dict' in ckpt:
+                model.load_state_dict(ckpt['model_state_dict'])
+            else:
+                model.load_state_dict(ckpt)
+            print(f"  Loaded checkpoint: {checkpoint}")
+        except RuntimeError as e:
+            print(f"  Warning: Checkpoint incompatible (architecture changed), using random weights")
+            print(f"  {e}")
 
     x_dev, d_dev = x.to(device), d.to(device)
     with torch.no_grad():
