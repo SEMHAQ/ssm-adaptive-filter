@@ -15,7 +15,7 @@ import json
 import time
 from pathlib import Path
 
-from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter, HybridNLMSNN
+from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter, HybridNLMSNN, TCNFilter
 from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
@@ -71,11 +71,11 @@ def train_ssm_af(
 
     # Initialize model
     if task == 'loudspeaker_echo':
-        model = HybridNLMSNN(
+        model = TCNFilter(
             filter_length=filter_length,
-            mu=0.5,
-            context_len=16,
-            nl_hidden_dim=hidden_dim
+            hidden_dim=hidden_dim,
+            num_blocks=3,
+            kernel_size=3
         ).to(device)
     else:
         model = SSMAF(

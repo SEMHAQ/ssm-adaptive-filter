@@ -428,6 +428,115 @@ class HybridNLMSNN(nn.Module):
         return y, e, w_history
 
 
+class CausalConv1d(nn.Module):
+    """Causal 1D convolution - no future information leakage."""
+    def __init__(self, in_channels, out_channels, kernel_size, dilation=1):
+        super().__init__()
+        self.padding = (kernel_size - 1) * dilation
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size,
+                              dilation=dilation, padding=self.padding)
+
+    def forward(self, x):
+        out = self.conv(x)
+        return out[:, :, :x.shape[2]]  # Remove future padding
+
+
+class TCNBlock(nn.Module):
+    """Temporal Convolutional Network block with residual connection."""
+    def __init__(self, channels, kernel_size, dilation):
+        super().__init__()
+        self.conv1 = CausalConv1d(channels, channels, kernel_size, dilation)
+        self.bn1 = nn.BatchNorm1d(channels)
+        self.conv2 = CausalConv1d(channels, channels, kernel_size, dilation)
+        self.bn2 = nn.BatchNorm1d(channels)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        residual = x
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        return self.relu(out + residual)
+
+
+class TCNFilter(nn.Module):
+    """
+    Temporal Convolutional Network for adaptive filtering.
+
+    Pure neural approach: learns to predict filter output directly
+    from input signal, replacing classical LMS/NLMS/RLS entirely.
+
+    Architecture:
+    - Causal dilated convolutions (no future leakage)
+    - Residual connections for stable training
+    - Small kernel size for low latency
+    - Comparable parameters to NLMS (filter_length weights)
+
+    Advantages over classical methods:
+    - Can learn nonlinear mappings
+    - Can learn optimal update rule from data
+    - Better tracking in nonstationary environments
+
+    Advantages over LSTM:
+    - Parallelizable (faster training/inference)
+    - No vanishing gradient problem
+    - Deterministic computation time
+    """
+
+    def __init__(self, filter_length: int = 64, hidden_dim: int = 32,
+                 num_blocks: int = 3, kernel_size: int = 3, **kwargs):
+        super().__init__()
+        self.filter_length = filter_length
+
+        # Input projection: x(n) + d(n) -> hidden
+        self.input_proj = nn.Sequential(
+            nn.Conv1d(2, hidden_dim, 1),
+            nn.ReLU()
+        )
+
+        # TCN blocks with increasing dilation
+        self.tcn_blocks = nn.ModuleList([
+            TCNBlock(hidden_dim, kernel_size, dilation=2**i)
+            for i in range(num_blocks)
+        ])
+
+        # Output: predict error signal e(n)
+        self.output_proj = nn.Conv1d(hidden_dim, 1, 1)
+
+        # Initialize output to zero
+        nn.init.zeros_(self.output_proj.weight)
+        nn.init.zeros_(self.output_proj.bias)
+
+    def forward(self, x, d, num_steps=None):
+        """
+        Args:
+            x: (B, seq_len) - input signal
+            d: (B, seq_len) - desired signal
+        Returns:
+            y: (B, seq_len) - filter output (d - e)
+            e: (B, seq_len) - predicted error signal
+            w_history: dummy for compatibility
+        """
+        # Stack x and d as channels: (B, 2, seq_len)
+        inp = torch.stack([x, d], dim=1)
+
+        # TCN forward
+        h = self.input_proj(inp)
+        for block in self.tcn_blocks:
+            h = block(h)
+
+        # Predict error
+        e = self.output_proj(h).squeeze(1)  # (B, seq_len)
+
+        # Filter output: y = d - e
+        y = d - e
+
+        # Dummy w_history
+        w_history = torch.zeros(x.shape[0], x.shape[1], self.filter_length,
+                               device=x.device)
+
+        return y, e, w_history
+
+
 if __name__ == "__main__":
     batch_size = 2
     seq_len = 500

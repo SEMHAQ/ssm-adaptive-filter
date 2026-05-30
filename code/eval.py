@@ -16,7 +16,7 @@ import argparse
 import os
 from pathlib import Path
 
-from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter, HybridNLMSNN
+from models.ssm_af import SSMAF, LMSFilter, NLMSFilter, RLSFilter, TCNFilter
 from data.generate import (
     generate_echo_cancellation_data,
     generate_channel_equalization_data,
@@ -231,9 +231,9 @@ def run_evaluation(task: str, filter_length: int = 64, seq_len: int = 8000,
 
     # --- SSM-AF / Hybrid-NLMS-NN ---
     if task == 'loudspeaker_echo':
-        print("Evaluating Hybrid-NLMS-NN...")
-        model = HybridNLMSNN(filter_length=filter_length, mu=0.5, context_len=16, nl_hidden_dim=64).to(device)
-        method_name = 'Hybrid-NLMS-NN'
+        print("Evaluating TCN...")
+        model = TCNFilter(filter_length=filter_length, hidden_dim=32, num_blocks=3).to(device)
+        method_name = 'TCN'
     else:
         print("Evaluating SSM-AF...")
         model = SSMAF(filter_length=filter_length, hidden_dim=64).to(device)
