@@ -1,11 +1,14 @@
 """
-SSM-AF: State Space Model based Adaptive Filter (v6 - Context-Aware)
+SSM-AF: State Space Model based Adaptive Filter (v7 - Change Detection)
 
-NLMS with learned step size using error history context.
-The network observes a window of recent errors to detect:
-- Convergence state (steady decreasing error -> small step)
-- Echo path change (sudden error increase -> large step)
-- Noise level (error variance -> optimal tradeoff)
+NLMS with explicit change detection + learned step size.
+
+Key innovation: Two-tier adaptation:
+1. Change detector monitors error variance ratio (recent vs long-term)
+2. When change detected, step size increases dramatically for fast re-convergence
+3. When converged, learned step size minimizes steady-state error
+
+This directly addresses the non-stationary tracking problem.
 """
 
 import torch
@@ -14,22 +17,68 @@ import torch.nn.functional as F
 import numpy as np
 
 
+class ChangeDetector(nn.Module):
+    """
+    Detects echo path changes by monitoring error statistics.
+
+    Computes ratio of short-term to long-term error power.
+    When echo path changes, short-term error spikes -> ratio > 1.
+
+    This is differentiable and can be trained end-to-end.
+    """
+
+    def __init__(self, short_window: int = 8, long_window: int = 64):
+        super().__init__()
+        self.short_window = short_window
+        self.long_window = long_window
+
+        # Learnable thresholds and sensitivities
+        self.sensitivity = nn.Parameter(torch.tensor(2.0))
+        self.threshold = nn.Parameter(torch.tensor(1.5))
+
+    def forward(self, e_history):
+        """
+        Args:
+            e_history: (B, long_window) - error history
+        Returns:
+            change_score: (B, 1) - change probability in [0, 1]
+        """
+        # Short-term power (recent errors)
+        short_power = (e_history[:, :self.short_window] ** 2).mean(dim=-1, keepdim=True)
+
+        # Long-term power (all errors)
+        long_power = (e_history ** 2).mean(dim=-1, keepdim=True) + 1e-8
+
+        # Ratio: >1 means error is increasing (possible change)
+        ratio = short_power / long_power
+
+        # Soft thresholding with learnable parameters
+        change_score = torch.sigmoid(self.sensitivity * (ratio - self.threshold))
+
+        return change_score
+
+
 class StepSizeNet(nn.Module):
     """
     Predicts adaptive step size from signal context and error history.
 
-    Key insight: By looking at recent error trends, the network can detect
-    when the echo path has changed and increase step size accordingly.
-
-    Input: x_buf (filter_length), e_history (context_len), x_power (1)
-    Output: step size mu in (0, 1)
+    Combines:
+    - Change detection (explicit ratio-based)
+    - Learned patterns (MLP on error history)
+    - Current signal state
     """
 
-    def __init__(self, filter_length: int, context_len: int = 16, hidden_dim: int = 32):
+    def __init__(self, filter_length: int, context_len: int = 64, hidden_dim: int = 32):
         super().__init__()
         self.context_len = context_len
 
-        # Error history encoder (captures temporal patterns)
+        # Change detector (explicit)
+        self.change_detector = ChangeDetector(
+            short_window=8,
+            long_window=context_len
+        )
+
+        # Error pattern encoder
         self.error_encoder = nn.Sequential(
             nn.Linear(context_len, hidden_dim),
             nn.ReLU(),
@@ -38,67 +87,80 @@ class StepSizeNet(nn.Module):
 
         # Signal features encoder
         self.signal_encoder = nn.Sequential(
-            nn.Linear(filter_length + 1, hidden_dim),  # x_buf + current error
+            nn.Linear(filter_length + 1, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
         )
 
-        # Combine and predict step size
+        # Step size predictor (takes all features + change score)
         self.predictor = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.Linear(hidden_dim + 1, hidden_dim // 2),  # +1 for change_score
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1),
             nn.Sigmoid()
         )
 
-        # Initialize to output ~0.5 initially
+        # Initialize predictor to output moderate values
         nn.init.zeros_(self.predictor[-2].weight)
         nn.init.constant_(self.predictor[-2].bias, 0.0)
 
     def forward(self, x_buf, e_current, e_history):
         """
         Args:
-            x_buf: (B, filter_length) - current input buffer
-            e_current: (B, 1) - current error
-            e_history: (B, context_len) - recent error history
+            x_buf: (B, filter_length)
+            e_current: (B, 1)
+            e_history: (B, context_len)
         Returns:
             mu: (B, 1) - step size in (0, 1)
+            change_score: (B, 1) - detected change probability
         """
-        # Encode error history (temporal patterns)
+        # Change detection
+        change_score = self.change_detector(e_history)
+
+        # Error patterns
         e_feat = self.error_encoder(e_history)
 
-        # Encode current signal state
+        # Signal state
         sig_feat = self.signal_encoder(torch.cat([x_buf, e_current], dim=-1))
 
-        # Combine and predict
-        combined = torch.cat([e_feat, sig_feat], dim=-1)
-        return self.predictor(combined)
+        # Combine all features
+        combined = torch.cat([e_feat, sig_feat, change_score], dim=-1)
+        mu = self.predictor(combined)
+
+        return mu, change_score
 
 
 class SSMAF(nn.Module):
     """
-    SSM-AF v6: Context-Aware NLMS with Learned Step Size
+    SSM-AF v7: Change Detection + Learned Step Size
 
-    Key innovation: Step size prediction conditioned on error history,
-    enabling the model to detect and adapt to non-stationary changes.
+    Two-tier adaptation strategy:
+    1. Change detector identifies when echo path shifts
+    2. Base step size scales with change score for fast re-convergence
+    3. Learned component fine-tunes for steady-state performance
 
     Update rule:
         direction = x_buf / (||x_buf||^2 + eps)   [NLMS direction]
-        mu = sigmoid(MLP(x_buf, e, e_history))      [context-aware step size]
+        mu_base = base_mu * (1 + alpha * change_score)  [adaptive base]
+        mu_learned = sigmoid(MLP(...))                   [fine-tuning]
+        mu = mu_base + mu_learned
         w = w + mu * direction * e
     """
 
     def __init__(self, filter_length: int = 64, hidden_dim: int = 32,
-                 context_len: int = 16, **kwargs):
+                 context_len: int = 64, **kwargs):
         super().__init__()
         self.filter_length = filter_length
         self.context_len = context_len
 
-        # Context-aware step size predictor
+        # Step size predictor with change detection
         self.step_net = StepSizeNet(filter_length, context_len, hidden_dim)
 
         # Learnable base step size
         self.base_mu = nn.Parameter(torch.tensor(0.1))
+
+        # Learnable change response factor
+        self.alpha = nn.Parameter(torch.tensor(1.0))
 
     def forward(self, x, d):
         """
@@ -128,17 +190,23 @@ class SSMAF(nn.Module):
             y_t = (w * x_buf).sum(dim=-1, keepdim=True)
             e_t = d[:, t:t+1] - y_t
 
-            # NLMS direction (normalized)
+            # NLMS direction
             x_norm_sq = (x_buf ** 2).sum(dim=-1, keepdim=True) + 1e-8
             direction = x_buf / x_norm_sq
 
-            # Context-aware step size
-            mu = self.step_net(x_buf, e_t, e_history) + self.base_mu
+            # Step size with change detection
+            mu_learned, change_score = self.step_net(x_buf, e_t, e_history)
+
+            # Adaptive base: larger when change detected
+            mu_adaptive_base = self.base_mu * (1 + self.alpha * change_score)
+
+            # Total step size
+            mu = mu_adaptive_base + mu_learned
 
             # Update filter coefficients
             w = w + mu * direction * e_t
 
-            # Update error history buffer
+            # Update error history
             e_history = torch.roll(e_history, 1, dims=1)
             e_history[:, 0] = e_t.squeeze(-1)
 
@@ -237,7 +305,7 @@ if __name__ == "__main__":
     x = torch.randn(batch_size, seq_len)
     d = torch.randn(batch_size, seq_len)
 
-    model = SSMAF(filter_length=filter_length, hidden_dim=16)
+    model = SSMAF(filter_length=filter_length, hidden_dim=16, context_len=32)
     y, e, w_hist = model(x, d)
 
     print(f"Input:   {x.shape}")
