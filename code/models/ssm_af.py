@@ -45,15 +45,20 @@ class SelectiveSSM(nn.Module):
         # SSM parameters (input-dependent via projection)
         self.x_proj = nn.Linear(d_model, d_state * 2 + d_model, bias=False)  # B, C, dt
 
-        # A parameter (log space for stability)
-        A = torch.arange(1, d_state + 1, dtype=torch.float32).unsqueeze(0).expand(d_model, -1)
+        # A parameter: initialize with small negative values for stability
+        # Use linspace for better conditioned initialization
+        A = torch.linspace(0.1, 1.0, d_state).unsqueeze(0).expand(d_model, -1)
         self.A_log = nn.Parameter(torch.log(A))
 
         # D parameter (skip connection)
-        self.D = nn.Parameter(torch.ones(d_model))
+        self.D = nn.Parameter(torch.ones(d_model) * 0.1)
+
+        # Layer normalization for stability
+        self.norm = nn.LayerNorm(d_model)
 
         # Output projection
         self.out_proj = nn.Linear(d_model, d_model, bias=False)
+        nn.init.xavier_uniform_(self.out_proj.weight)
 
     def forward(self, x):
         """
@@ -74,13 +79,15 @@ class SelectiveSSM(nn.Module):
 
         # Compute input-dependent SSM parameters
         x_dbl = self.x_proj(x_conv)  # (B, L, 2*d_state + D)
-        B_param = x_dbl[..., :self.d_state]  # (B, L, d_state)
-        C_param = x_dbl[..., self.d_state:2*self.d_state]  # (B, L, d_state)
-        dt = F.softplus(x_dbl[..., 2*self.d_state:])  # (B, L, D) - discretization step
+        B_param = torch.tanh(x_dbl[..., :self.d_state])  # (B, L, d_state), bounded
+        C_param = torch.tanh(x_dbl[..., self.d_state:2*self.d_state])  # (B, L, d_state), bounded
+        dt = torch.sigmoid(x_dbl[..., 2*self.d_state:]) * 0.5  # (B, L, D), bounded in [0, 0.5]
 
         # Discretize A
-        A = -torch.exp(self.A_log)  # (D, d_state)
-        dA = torch.exp(dt.unsqueeze(-1) * A)  # (B, L, D, d_state)
+        A = -torch.exp(self.A_log)  # (D, d_state), negative for stability
+        # Clamp to prevent overflow
+        dt_A = (dt.unsqueeze(-1) * A).clamp(-5.0, 5.0)
+        dA = torch.exp(dt_A)  # (B, L, D, d_state)
         dB = dt.unsqueeze(-1) * B_param.unsqueeze(2)  # (B, L, D, d_state)
 
         # Selective scan (sequential for clarity, can be parallelized)
@@ -88,6 +95,7 @@ class SelectiveSSM(nn.Module):
         outputs = []
         for t in range(seq_len):
             h = dA[:, t] * h + dB[:, t] * x_conv[:, t].unsqueeze(-1)
+            h = h.clamp(-10.0, 10.0)  # Prevent state explosion
             y_t = (h * C_param[:, t].unsqueeze(1)).sum(-1)  # (B, D)
             outputs.append(y_t)
 
@@ -98,6 +106,9 @@ class SelectiveSSM(nn.Module):
 
         # Gating
         y = y * F.silu(z)
+
+        # Normalize for stability
+        y = self.norm(y)
 
         return self.out_proj(y)
 
