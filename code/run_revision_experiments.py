@@ -50,7 +50,7 @@ def compute_nmse_per_sample(h_est, h_true):
 
 
 def generate_itu_channel(channel_length, model='peda', num_samples=1000,
-                         randomize_positions=False):
+                         randomize_positions=False, normalize=True):
     """
     Generate ITU channel models with exponentially decaying power delay profile.
 
@@ -60,6 +60,7 @@ def generate_itu_channel(channel_length, model='peda', num_samples=1000,
         num_samples: Number of channel realizations
         randomize_positions: If True, randomize tap positions (realistic sparse
             channel); if False, use fixed ITU positions (original behavior)
+        normalize: If True, normalize each channel to unit L2 norm
     Returns:
         h: (num_samples, channel_length) channel impulse responses
     """
@@ -99,8 +100,9 @@ def generate_itu_channel(channel_length, model='peda', num_samples=1000,
                     np.random.randn(num_samples) + 1j * np.random.randn(num_samples)
                 ).real
 
-    # Normalize
-    h = h / (np.linalg.norm(h, axis=1, keepdims=True) + 1e-10)
+    # Normalize to unit L2 norm (optional)
+    if normalize:
+        h = h / (np.linalg.norm(h, axis=1, keepdims=True) + 1e-10)
     return torch.tensor(h, dtype=torch.float32)
 
 
@@ -986,7 +988,7 @@ def exp_depth_sweep(save_dir, device, seeds=5, num_test=200):
 def generate_itu_training_data(num_samples, channel_length, model_type, pilot_length, snr_db):
     """Generate training data from ITU channel models with random tap positions."""
     h = generate_itu_channel(channel_length, model=model_type, num_samples=num_samples,
-                             randomize_positions=True)
+                             randomize_positions=True, normalize=False)
     # BPSK pilots
     x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
     # Convolve: d = x * h + noise
@@ -1068,7 +1070,7 @@ def exp_itu_training(save_dir, device, seeds=5, num_test=200):
 
             # Test on same ITU channel model (random positions)
             h_test = generate_itu_channel(N, model=model_type, num_samples=num_test,
-                                          randomize_positions=True)
+                                          randomize_positions=True, normalize=False)
             x_test = torch.randint(0, 2, (num_test, pilot)).float() * 2 - 1
             d_list = []
             for i in range(num_test):
