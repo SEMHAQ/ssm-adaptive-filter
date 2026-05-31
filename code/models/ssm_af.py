@@ -596,10 +596,10 @@ class LISTA(nn.Module):
 
         # LISTA layers
         # Gradient magnitude at init is ~0.1 (mean abs).
-        # We need step * grad > threshold for gradient to flow.
-        # init_step=1.0, init_threshold=0.001 gives step*grad ≈ 0.1 >> 0.001.
+        # init_step=0.5, init_threshold=0.001 gives step*grad ≈ 0.05 >> 0.001.
+        # Grid search: 0.5 is optimal (0.1 underfits, 1.0 diverges).
         self.layers = nn.ModuleList([
-            LISTALayer(channel_length, init_step=1.0, init_threshold=0.001)
+            LISTALayer(channel_length, init_step=0.5, init_threshold=0.001)
             for _ in range(num_layers)
         ])
 

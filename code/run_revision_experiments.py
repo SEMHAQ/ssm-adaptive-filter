@@ -153,7 +153,7 @@ class LISTANoW(nn.Module):
 
 class LISTALayerNoW(nn.Module):
     """LISTA layer without W (identity mapping)."""
-    def __init__(self, channel_length, init_step=0.1, init_threshold=0.01):
+    def __init__(self, channel_length, init_step=0.5, init_threshold=0.001):
         super().__init__()
         self.step = nn.Parameter(torch.tensor(init_step))
         self.threshold = nn.Parameter(torch.tensor(init_threshold))
@@ -165,7 +165,7 @@ class LISTALayerNoW(nn.Module):
 
 class LISTAFixedThreshold(nn.Module):
     """LISTA with fixed threshold (not learnable)."""
-    def __init__(self, channel_length, num_layers=8, fixed_threshold=0.01):
+    def __init__(self, channel_length, num_layers=8, fixed_threshold=0.001):
         super().__init__()
         self.channel_length = channel_length
         self.num_layers = num_layers
@@ -180,7 +180,7 @@ class LISTAFixedThreshold(nn.Module):
 
 class LISTALayerFixedThresh(nn.Module):
     """LISTA layer with fixed threshold."""
-    def __init__(self, channel_length, fixed_threshold=0.01, init_step=0.1):
+    def __init__(self, channel_length, fixed_threshold=0.001, init_step=0.5):
         super().__init__()
         self.step = nn.Parameter(torch.tensor(init_step))
         self.fixed_threshold = fixed_threshold
@@ -198,8 +198,8 @@ class LISTASharedParams(nn.Module):
         super().__init__()
         self.channel_length = channel_length
         self.num_layers = num_layers
-        self.step = nn.Parameter(torch.tensor(0.1))
-        self.threshold = nn.Parameter(torch.tensor(0.01))
+        self.step = nn.Parameter(torch.tensor(0.5))
+        self.threshold = nn.Parameter(torch.tensor(0.001))
         self.W_layers = nn.ModuleList([
             nn.Linear(channel_length, channel_length, bias=False) for _ in range(num_layers)
         ])
