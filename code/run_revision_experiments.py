@@ -729,7 +729,7 @@ def exp_itu_channel(save_dir, device, seeds=5, num_test=200):
     print("ITU CHANNEL MODEL EXPERIMENTS")
     print("=" * 60)
 
-    N, K, L, pilot, snr = 64, 5, 8, 128, 20
+    N, K, L, pilot, snr = 64, 5, 20, 256, 20
     channel_models = {
         'ITU PedA': 'peda',
         'ITU VehA': 'veha',
@@ -745,6 +745,7 @@ def exp_itu_channel(save_dir, device, seeds=5, num_test=200):
         # Train LISTA on i.i.d. Gaussian channels
         print("  Training LISTA on i.i.d. Gaussian channels...")
         model = train_model(LISTA(N, L), N, K, pilot, snr, epochs=200, device=device)
+        model.eval()
         model.eval()
 
         for model_name, model_type in channel_models.items():
@@ -973,7 +974,7 @@ def exp_depth_sweep(save_dir, device, seeds=5, num_test=200):
 def generate_itu_training_data(num_samples, channel_length, model_type, pilot_length, snr_db):
     """Generate training data from ITU channel models with random tap positions."""
     h = generate_itu_channel(channel_length, model=model_type, num_samples=num_samples,
-                             randomize_positions=True, normalize=False)
+                             randomize_positions=True, normalize=True)
     # BPSK pilots
     x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
     # Convolve: d = x * h + noise (flip h for true convolution)
@@ -993,7 +994,8 @@ def generate_itu_training_data(num_samples, channel_length, model_type, pilot_le
 
 
 def train_model_itu(model, channel_length, model_type, pilot_length, snr_db,
-                    epochs=200, batch_size=64, device='cpu'):
+                    epochs=300, batch_size=256, device='cpu', snr_range=None,
+                    max_threshold=0.005):
     """Train LISTA on ITU channel data."""
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=5e-4, weight_decay=1e-5)
@@ -1001,9 +1003,11 @@ def train_model_itu(model, channel_length, model_type, pilot_length, snr_db,
 
     for epoch in range(epochs):
         model.train()
+        # Variable SNR for robustness (like Gaussian training)
+        train_snr = np.random.uniform(0, 30)
         x, d, h = generate_itu_training_data(
             num_samples=batch_size, channel_length=channel_length,
-            model_type=model_type, pilot_length=pilot_length, snr_db=snr_db
+            model_type=model_type, pilot_length=pilot_length, snr_db=train_snr
         )
         x, d, h = x.to(device), d.to(device), h.to(device)
 
@@ -1019,6 +1023,11 @@ def train_model_itu(model, channel_length, model_type, pilot_length, snr_db,
         optimizer.step()
         scheduler.step()
 
+        # Clamp threshold to prevent it from killing weak taps
+        if max_threshold is not None:
+            for layer in model.layers:
+                layer.threshold.threshold.data.clamp_(max=max_threshold)
+
     return model
 
 
@@ -1028,7 +1037,7 @@ def exp_itu_training(save_dir, device, seeds=5, num_test=200):
     print("ITU CHANNEL TRAINING EXPERIMENTS")
     print("=" * 60)
 
-    N, L, pilot, snr = 64, 8, 128, 20
+    N, L, pilot, snr = 64, 20, 256, 20
     channel_models = {
         'ITU PedA': 'peda',
         'ITU VehA': 'veha',
@@ -1045,17 +1054,21 @@ def exp_itu_training(save_dir, device, seeds=5, num_test=200):
             torch.manual_seed(seed * 42)
             np.random.seed(seed * 42)
 
-            # Train LISTA on ITU channels
-            model = LISTA(N, L)
+            # Train LISTA on ITU channels (smaller threshold for weak ITU taps)
+            model = LISTA(N, L, init_step=0.5, init_threshold=0.0001)
+            # Clamp threshold to prevent it from growing too large
+            # ITU weak taps have amplitude ~0.03-0.07; threshold must stay well below this
+            for layer in model.layers:
+                layer.threshold.threshold.data.clamp_(max=0.005)
             model = train_model_itu(
                 model, N, model_type, pilot, snr,
-                epochs=200, batch_size=64, device=device
+                epochs=500, batch_size=256, device=device
             )
             model.eval()
 
             # Test on same ITU channel model (random positions)
             h_test = generate_itu_channel(N, model=model_type, num_samples=num_test,
-                                          randomize_positions=True, normalize=False)
+                                          randomize_positions=True, normalize=True)
             x_test = torch.randint(0, 2, (num_test, pilot)).float() * 2 - 1
             d_list = []
             for i in range(num_test):

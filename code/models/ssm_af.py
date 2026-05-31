@@ -589,7 +589,7 @@ class LISTA(nn.Module):
     """
 
     def __init__(self, channel_length: int = 64, num_layers: int = 10,
-                 **kwargs):
+                 init_step=0.5, init_threshold=0.001, **kwargs):
         super().__init__()
         self.channel_length = channel_length
         self.num_layers = num_layers
@@ -599,7 +599,7 @@ class LISTA(nn.Module):
         # init_step=0.5, init_threshold=0.001 gives step*grad ≈ 0.05 >> 0.001.
         # Grid search: 0.5 is optimal (0.1 underfits, 1.0 diverges).
         self.layers = nn.ModuleList([
-            LISTALayer(channel_length, init_step=0.5, init_threshold=0.001)
+            LISTALayer(channel_length, init_step=init_step, init_threshold=init_threshold)
             for _ in range(num_layers)
         ])
 
