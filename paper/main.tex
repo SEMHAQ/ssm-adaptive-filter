@@ -1,0 +1,582 @@
+%%
+%% Deep-Unfolded Sparse Channel Estimation via Learned ISTA
+%% Target Journal: Digital Signal Processing (Elsevier)
+%%
+\documentclass[a4paper,fleqn]{cas-sc}
+
+\usepackage[authoryear,longnamesfirst]{natbib}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{color}
+\usepackage{bm}
+\usepackage[section]{placeins}
+
+%%% Author macros
+\def\tsc#1{\csdef{#1}{\textsc{\lowercase{#1}}\xspace}}
+\tsc{WGM}
+\tsc{QE}
+
+\begin{document}
+\let\WriteBookmarks\relax
+\def\floatpagepagefraction{1}
+\def\textpagefraction{.001}
+
+% Short title
+\shorttitle{Analysis of LISTA for Sparse Channel Estimation}
+
+% Short author
+\shortauthors{H. Yu}
+
+% Main title of the paper
+\title [mode = title]{Analysis of Deep-Unfolded LISTA for Sparse Channel Estimation: Generalization, Ablation, and Practical Limitations}
+
+% First author
+\author[1]{Huanjie Yu}[orcid=0009-0008-9824-1801]
+\cormark[1]
+\fnmark[1]
+\ead{semhaqx@gmail.com}
+\credit{Conceptualization, Methodology, Software, Validation, Writing - original draft}
+
+% Affiliation
+\affiliation[1]{organization={School of Computer Science, Hunan University of Technology and Business},
+            addressline={Yuelu District},
+            city={Changsha},
+            postcode={410205},
+            state={Hunan},
+            country={China}}
+
+% Corresponding author
+\cortext[cor1]{Corresponding author}
+
+% Abstract
+\begin{abstract}
+Sparse channel estimation is a fundamental problem in wireless communications, where multipath channels exhibit sparse impulse responses with only a few significant taps. Traditional greedy algorithms such as Orthogonal Matching Pursuit (OMP) and convex relaxation methods like LASSO achieve high recovery accuracy but suffer from high computational complexity and require prior knowledge of the sparsity level. In this paper, we investigate the application of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA)---a deep-unfolded architecture originally proposed for sparse coding---to sparse channel estimation, with a focus on understanding its strengths (fast inference, no sparsity knowledge required) and limitations (accuracy gap vs.~OMP/LASSO) through systematic analysis. By unrolling ISTA iterations into a fixed-depth neural network with learnable step sizes, thresholds, and linear mappings, LISTA adapts to channel statistics through end-to-end training without requiring explicit sparsity knowledge. We provide a systematic analysis of LISTA's behavior in the channel estimation context, including ablation studies, generalization experiments, and practical deployment tests. Under matched distribution conditions (i.i.d.~Gaussian channels), LISTA achieves $-17.4$~dB NMSE, outperforming LMS ($-7.0$~dB) and NLMS ($-7.8$~dB) by $\sim$10~dB, while OMP ($-33.1$~dB) and LASSO ($-26.3$~dB) outperform LISTA by 9--16~dB. The ablation study reveals large, statistically significant component contributions: the learnable threshold contributes $+7.5$~dB ($p < 0.001$) and the learnable mapping $+2.3$~dB ($p < 0.001$). Generalization within the training distribution is robust across sparsity ($K=2$--$10$) and SNR (0--30~dB) levels, with LISTA's NMSE saturating at $\sim$$-17$~dB due to the fixed-depth architecture. On ITU channel models, LISTA trained on i.i.d.~Gaussian data achieves $-23$~dB, narrowing the gap with OMP ($-26$ to $-28$~dB) to $\sim$3--6~dB. The optimal network depth is 15--20 layers, with $0.40$~ms CPU inference and $32{,}784$ parameters. These findings provide a practical framework for deploying deep unfolding in sparse channel estimation, identifying both strengths and actionable mitigation strategies for its limitations.
+\end{abstract}
+
+% Research highlights
+\begin{highlights}
+\item Systematic analysis of LISTA for sparse channel estimation: ablation, generalization, and deployment
+\item Ablation reveals large, statistically significant component contributions: threshold $+7.5$~dB, mapping $+2.3$~dB ($p < 0.001$)
+\item LISTA outperforms LMS/NLMS by $\sim$10~dB but trails OMP/LASSO by 9--16~dB on i.i.d.~Gaussian channels
+\item On ITU channels, LISTA narrows gap with OMP to $\sim$3--6~dB; $8\times$ faster inference, no sparsity knowledge required
+\item Optimal depth 15--20 layers; $0.40$~ms CPU inference with $32$K parameters
+\end{highlights}
+
+% Keywords
+\begin{keywords}
+sparse channel estimation \sep deep unfolding \sep ISTA \sep LISTA \sep adaptive filtering \sep compressed sensing
+\end{keywords}
+
+\maketitle
+
+%% ============================================================
+%% 1. Introduction
+%% ============================================================
+\section{Introduction}\label{sec:intro}
+
+Sparse channel estimation is a critical problem in modern wireless communication systems, where the multipath propagation environment gives rise to channel impulse responses (CIRs) with only a few significant taps among many potentially active ones~\citep{bajwa2010compressed, berger2010application}. This sparsity structure arises naturally in wideband communication systems, underwater acoustics, and radar applications, where the channel delay spread is large but the number of significant paths is relatively small. Exploiting this sparsity can significantly improve estimation accuracy and spectral efficiency compared to conventional least-squares approaches that treat the channel as fully dense~\citep{sayed2003fundamentals}.
+
+Compressed sensing (CS) theory~\citep{candes2006robust, donoho2006compressed} provides a principled framework for sparse signal recovery. Two widely used approaches are greedy algorithms, exemplified by Orthogonal Matching Pursuit (OMP)~\citep{tropp2007signal}, and convex relaxation methods, particularly the Least Absolute Shrinkage and Selection Operator (LASSO)~\citep{tibshirani1996regression}. OMP iteratively selects the atom most correlated with the residual, achieving good performance when the sparsity level is known. LASSO replaces the intractable $\ell_0$ norm with a convex $\ell_1$ surrogate, enabling efficient optimization via proximal gradient methods. However, both approaches have limitations: OMP requires the sparsity level as a prior and is sensitive to atom correlations, while LASSO requires careful tuning of the regularization parameter and may introduce bias in the estimates~\citep{daubechies2004iterative}.
+
+The Iterative Shrinkage-Thresholding Algorithm (ISTA)~\citep{daubechies2004iterative, beck2009fast} offers an alternative optimization framework for sparse recovery. ISTA solves the LASSO problem by alternating between gradient descent on the data fidelity term and soft-thresholding to promote sparsity. While provably convergent, ISTA typically requires many iterations to achieve high accuracy, and its performance depends critically on the choice of step size and thresholding parameter.
+
+Recent advances in deep learning have inspired the paradigm of \emph{deep unfolding}~\citep{gregor2010learning, monga2021algorithm}, which unrolls iterative optimization algorithms into neural network layers with learnable parameters. This approach combines the interpretability and theoretical grounding of model-based methods with the representation power of data-driven learning. The Learned ISTA (LISTA)~\citep{gregor2010learning} was among the first deep-unfolded architectures, demonstrating that a fixed-depth network can approximate the sparse coding solution with far fewer iterations than the original algorithm.
+
+In this paper, we provide a systematic investigation of LISTA's application to sparse channel estimation in wireless communications. While LISTA itself is an established architecture, its behavior in the channel estimation context---where the measurement matrix has convolutional structure, the sparsity pattern varies across channels, and the operating SNR spans a wide range---has not been thoroughly studied. Our key contributions are:
+
+\begin{enumerate}
+\item We adapt LISTA to the sparse channel estimation problem and provide a detailed analysis of how the learned parameters (step sizes, thresholds, and linear mappings) behave across different channel conditions, including ablation studies quantifying individual component contributions.
+
+\item We conduct comprehensive ablation studies quantifying the contribution of each learnable component---step sizes, thresholds, and the linear mapping $\mathbf{W}^{(k)}$---revealing large, statistically significant contributions from the learnable threshold ($+7.46$~dB, $p < 0.001$) and mapping ($+2.28$~dB, $p < 0.001$).
+
+\item We evaluate generalization across mismatched channel conditions, including training--test mismatches in sparsity level, channel length, and SNR. This analysis reveals LISTA's robustness boundaries and provides practical guidance for deployment scenarios where channel statistics may drift.
+
+\item We compare LISTA against properly tuned baselines, including LASSO with cross-validated regularization and LMS/NLMS with optimized step sizes, to ensure fair comparison. We also analyze the optimal network depth, identifying training instability at intermediate depths and monotonic improvement for deeper architectures.
+
+\item We assess practical deployment considerations including parameter count, inference time, and performance under realistic channel models (ITU pedestrian and vehicular), complementing the idealized i.i.d.~channel experiments.
+\end{enumerate}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews related work on sparse channel estimation and deep unfolding. Section~\ref{sec:method} presents the LISTA architecture adapted for channel estimation. Section~\ref{sec:experiments} describes the experimental setup and results, including baseline comparisons, ablation studies, generalization analysis, and practical deployment experiments. Section~\ref{sec:discussion} discusses the findings, limitations, and practical implications, and Section~\ref{sec:conclusion} concludes the paper.
+
+
+%% ============================================================
+%% 2. Related Work
+%% ============================================================
+\section{Related Work}\label{sec:related}
+
+\subsection{Sparse Channel Estimation}
+
+The exploitation of channel sparsity for estimation has been extensively studied in the compressed sensing literature. \citet{bajwa2010compressed} first applied compressed sensing to channel estimation, demonstrating that sparse CIRs can be recovered from fewer pilot symbols than the Nyquist rate requires. \citet{berger2010application} extended this framework to OFDM systems, showing significant pilot overhead reduction.
+
+Greedy algorithms, particularly OMP~\citep{tropp2007signal}, have been widely adopted for sparse channel estimation due to their simplicity and computational efficiency. OMP iteratively selects the dictionary atom most correlated with the residual, making it well-suited for scenarios where the sparsity level is known or can be estimated. However, OMP's performance degrades when atoms are highly correlated, which is common in multipath channels with closely spaced delays~\citep{cai2011analysis}.
+
+Convex relaxation approaches, especially LASSO~\citep{tibshirani1996regression}, replace the combinatorial $\ell_0$ minimization with a tractable $\ell_1$-regularized problem. The Iterative Shrinkage-Thresholding Algorithm (ISTA)~\citep{daubechies2004iterative, beck2009fast} and its accelerated variant FISTA~\citep{beck2009fast} solve the LASSO problem efficiently via proximal gradient descent. While these methods provide theoretical recovery guarantees under certain conditions~\citep{candes2006robust}, they require careful tuning of the regularization parameter and may converge slowly.
+
+\subsection{Deep Unfolding}
+
+Deep unfolding~\citep{monga2021algorithm} bridges model-based optimization and data-driven learning by converting iterative algorithms into neural network architectures. The seminal work by \citet{gregor2010learning} introduced LISTA, which unrolls ISTA into a fixed-depth network with learnable parameters. LISTA demonstrated that a network with only 10--20 layers can achieve the same recovery quality as ISTA with hundreds of iterations.
+
+Subsequent works have extended the deep unfolding paradigm to various applications. \citet{sprechmann2015learning} proposed learned proximal operators for sparse coding. \citet{wisdom2016full} unfolded sparse autoencoders for source separation. \citet{he2019ista} introduced ISTA-Net, which incorporates learnable nonlinear transforms into the ISTA framework for image reconstruction. \citet{chen2018lista} proposed LISTA-CP with provable convergence guarantees, addressing the theoretical gap between unfolded networks and their optimization counterparts. \citet{borgerding2020ista} introduced Onsager-corrected LISTA (OCLISTA) with improved convergence properties through momentum correction.
+
+More recently, deep unfolding has been applied to communication systems. \citet{elbir2023deep} provided a comprehensive survey of deep learning methods for channel estimation, covering both model-based and data-driven approaches across various wireless systems, including LISTA-based architectures that demonstrate improvements over OMP and LASSO.
+
+Our work differs from these prior applications by providing a systematic analysis of LISTA's behavior specifically in the channel estimation context. Rather than claiming architectural novelty, we focus on: (1) understanding what the learned parameters capture about multipath channel structure through ablation studies, (2) evaluating generalization across mismatched channel conditions, and (3) providing fair comparisons against properly tuned classical baselines.
+
+\subsection{Classical Adaptive Filtering}
+
+Classical adaptive filtering algorithms, including LMS~\citep{widrow1960adaptive} and NLMS~\citep{nagumo1967weight}, estimate the channel by minimizing the mean squared error between the desired signal and the filter output. While these methods are simple and computationally efficient, they do not exploit the sparsity structure of the channel, leading to slower convergence and higher steady-state error compared to sparsity-aware methods~\citep{sayed2003fundamentals}. The proportionate NLMS (PNLMS)~\citep{duttweiler2000proportionate} and its variants attempt to exploit sparsity by assigning different adaptation rates to different taps, but they still rely on the linear filtering framework and cannot achieve the recovery quality of compressed sensing approaches.
+
+
+%% ============================================================
+%% 3. Proposed Method
+%% ============================================================
+\section{Proposed Method}\label{sec:method}
+
+\subsection{Problem Formulation}
+
+Consider a wireless multipath channel with impulse response $\mathbf{h} = [h_1, h_2, \ldots, h_N]^T \in \mathbb{R}^N$, where $N$ is the channel length. The channel is sparse, meaning that only $K \ll N$ taps have significant energy: $\|\mathbf{h}\|_0 = K$. Given a pilot signal $\mathbf{x} \in \mathbb{R}^M$ of length $M$, the received signal is:
+\begin{equation}\label{eq:observation}
+\mathbf{d} = \mathbf{X} \mathbf{h} + \mathbf{v}
+\end{equation}
+where $\mathbf{X} \in \mathbb{R}^{M \times N}$ is the convolution matrix formed from $\mathbf{x}$, and $\mathbf{v} \sim \mathcal{N}(0, \sigma^2 \mathbf{I})$ is additive white Gaussian noise. The goal is to recover the sparse channel $\mathbf{h}$ from the observation $\mathbf{d}$ and the known pilot $\mathbf{x}$.
+
+The sparse recovery problem can be formulated as:
+\begin{equation}\label{eq:l0}
+\hat{\mathbf{h}} = \arg\min_{\mathbf{h}} \frac{1}{2} \|\mathbf{d} - \mathbf{X}\mathbf{h}\|_2^2 + \lambda \|\mathbf{h}\|_0
+\end{equation}
+where $\lambda$ controls the sparsity-complexity trade-off. Since Problem~\eqref{eq:l0} is NP-hard, practical methods relax the $\ell_0$ norm to the $\ell_1$ norm:
+\begin{equation}\label{eq:l1}
+\hat{\mathbf{h}} = \arg\min_{\mathbf{h}} \frac{1}{2} \|\mathbf{d} - \mathbf{X}\mathbf{h}\|_2^2 + \lambda \|\mathbf{h}\|_1
+\end{equation}
+
+\subsection{ISTA and Deep Unfolding}
+
+ISTA solves Problem~\eqref{eq:l1} via proximal gradient descent. Starting from $\mathbf{h}^{(0)} = \mathbf{0}$, each iteration performs:
+\begin{equation}\label{eq:ista}
+\mathbf{h}^{(k+1)} = \mathcal{S}_{\lambda t}\left(\mathbf{h}^{(k)} - t \mathbf{X}^T(\mathbf{X}\mathbf{h}^{(k)} - \mathbf{d})\right)
+\end{equation}
+where $t > 0$ is the step size and $\mathcal{S}_\theta$ is the element-wise soft-thresholding operator:
+\begin{equation}\label{eq:soft_threshold}
+[\mathcal{S}_\theta(\mathbf{z})]_i = \text{sign}(z_i) \cdot \max(|z_i| - \theta, 0)
+\end{equation}
+
+The key insight of deep unfolding is that each ISTA iteration can be viewed as a neural network layer with two operations: (1) a linear gradient step and (2) a nonlinear thresholding step. By making the step size $t$ and threshold $\theta$ learnable parameters, and adding a learnable linear mapping, we obtain the LISTA architecture.
+
+\subsection{LISTA Architecture}
+
+We adopt the standard LISTA architecture~\citep{gregor2010learning} and adapt it to the channel estimation setting. The network consists of $L$ layers, each implementing one learned ISTA iteration. The $k$-th layer computes:
+\begin{equation}\label{eq:lista_layer}
+\mathbf{h}^{(k+1)} = \mathcal{S}_{\theta^{(k)}}\left(\mathbf{W}^{(k)} \mathbf{h}^{(k)} - \mu^{(k)} \mathbf{g}^{(k)}\right)
+\end{equation}
+where $\mathbf{g}^{(k)} = \mathbf{X}^T(\mathbf{X}\mathbf{h}^{(k)} - \mathbf{d})$ is the gradient of the data fidelity term, $\mu^{(k)} > 0$ is the learnable step size, $\theta^{(k)} > 0$ is the learnable threshold, and $\mathbf{W}^{(k)} \in \mathbb{R}^{N \times N}$ is a learnable linear mapping.
+
+The learnable mapping $\mathbf{W}^{(k)}$ is a standard component of LISTA~\citep{gregor2010learning}. In the original ISTA iteration, this is the identity matrix $\mathbf{I}$. In LISTA, $\mathbf{W}^{(k)}$ is initialized as $\mathbf{I}$ and updated during training, effectively learning a preconditioner that captures inter-tap dependencies. For wireless multipath channels, this mapping can encode correlations between tap locations and amplitudes that arise from the physical propagation environment.
+
+The soft-thresholding operator uses a learnable per-layer threshold:
+\begin{equation}\label{eq:learned_threshold}
+\mathcal{S}_{\theta^{(k)}}(\mathbf{z}) = \text{sign}(\mathbf{z}) \odot \text{ReLU}(|\mathbf{z}| - \theta^{(k)})
+\end{equation}
+where $\odot$ denotes element-wise multiplication and $\theta^{(k)}$ is a scalar parameter learned per layer.
+
+The gradient computation $\mathbf{g}^{(k)} = \mathbf{X}^T(\mathbf{X}\mathbf{h}^{(k)} - \mathbf{d})$ involves two convolutions. We implement these using FFT-based circular convolution for computational efficiency:
+\begin{equation}\label{eq:fft_conv}
+\mathbf{X}\mathbf{h} = \text{IFFT}(\text{FFT}(\mathbf{x}) \odot \text{FFT}(\mathbf{h}))
+\end{equation}
+This reduces the per-layer complexity from $O(MN)$ to $O(M \log M)$.
+
+\subsection{Parameter Analysis}
+
+The total number of learnable parameters in the network is:
+\begin{equation}
+N_{\text{params}} = L \times (N^2 + 2)
+\end{equation}
+where $N^2$ parameters are in each $\mathbf{W}^{(k)}$ matrix, and $2$ parameters per layer for the step size $\mu^{(k)}$ and threshold $\theta^{(k)}$. For the default configuration ($L=8$, $N=64$), this gives $N_{\text{params}} = 8 \times (4096 + 2) = 32{,}784$ trainable parameters. The $\mathbf{W}^{(k)}$ matrices dominate the parameter count, accounting for $99.95\%$ of all parameters. At $N=256$, the per-layer mapping alone has $65{,}536$ parameters, yielding $524{,}304$ total parameters---a potential scalability concern that we discuss in Section~\ref{sec:discussion}.
+
+\subsection{Network Initialization and Training}
+
+The network parameters are initialized as follows:
+\begin{itemize}
+\item Step sizes: $\mu^{(k)} = 0.1$ for all layers
+\item Thresholds: $\theta^{(k)} = 0.1$ for all layers
+\item Linear mappings: $\mathbf{W}^{(k)} = \mathbf{I}$ (identity matrix)
+\end{itemize}
+
+The network is trained end-to-end using the normalized mean squared error (NMSE) loss:
+\begin{equation}\label{eq:loss}
+\mathcal{L} = \frac{\|\hat{\mathbf{h}} - \mathbf{h}\|_2^2}{\|\mathbf{h}\|_2^2 + \epsilon}
+\end{equation}
+where $\hat{\mathbf{h}}$ is the network output, $\mathbf{h}$ is the true channel, and $\epsilon = 10^{-10}$ is a small constant for numerical stability. The NMSE loss naturally handles channels with different power levels and provides a scale-invariant training objective. Note that the training loss uses the linear NMSE ratio, while all reported results use NMSE in dB: $\text{NMSE (dB)} = 10 \log_{10}(\mathcal{L})$.
+
+Training is performed using the Adam optimizer~\citep{kingma2015adam} with learning rate $10^{-3}$ and weight decay $10^{-5}$. A cosine annealing scheduler~\citep{loshchilov2017sgdr} is used to reduce the learning rate over the training epochs. Gradient clipping with max norm 1.0 is applied to prevent gradient explosion.
+
+\subsection{Computational Complexity}
+
+The per-iteration complexity of the proposed method is dominated by the FFT-based convolution and the matrix-vector multiplication with $\mathbf{W}^{(k)}$. For a channel of length $N$ and pilot length $M$:
+\begin{itemize}
+\item FFT-based convolution: $O(M \log M)$
+\item Linear mapping $\mathbf{W}^{(k)} \mathbf{h}$: $O(N^2)$
+\item Soft-thresholding: $O(N)$
+\end{itemize}
+
+With $L$ layers, the total complexity is $O(L(M \log M + N^2))$. For typical parameters ($N=64$, $M=128$, $L=8$), this is comparable to OMP's $O(LMN)$ complexity and significantly less than LASSO's iterative optimization.
+
+\subsection{Comparison with Classical Methods}
+
+LISTA differs from classical approaches in several aspects:
+
+\textbf{vs. OMP:} OMP requires the sparsity level $K$ as input and greedily selects one atom per iteration. LISTA does not require explicit sparsity knowledge and jointly optimizes all taps through gradient-based learning. However, OMP has lower per-iteration complexity ($O(MN)$ vs. $O(M \log M + N^2)$) and does not require training data.
+
+\textbf{vs. LASSO/ISTA:} Standard ISTA uses fixed step sizes and thresholds, requiring many iterations for convergence. LISTA learns per-layer parameters and can achieve comparable accuracy in fewer iterations. However, LASSO has theoretical recovery guarantees under certain conditions~\citep{candes2006robust}, while LISTA's generalization depends on the training distribution.
+
+\textbf{vs. LMS/NLMS:} Classical adaptive filters treat the channel as dense and do not exploit sparsity. They converge slowly and achieve higher steady-state error for sparse channels. However, LMS/NLMS require no training and adapt online to time-varying channels.
+
+
+%% ============================================================
+%% 4. Experiments
+%% ============================================================
+\section{Experiments}\label{sec:experiments}
+
+\subsection{Experimental Setup}
+
+We evaluate LISTA on sparse multipath channel estimation under both idealized and realistic conditions.
+
+\textbf{Data Generation.} The channel impulse response $\mathbf{h} \in \mathbb{R}^N$ has $K$ non-zero taps, where tap locations are drawn uniformly at random and tap amplitudes follow $\mathcal{N}(0, 1)$. Pilot signals are BPSK-modulated ($\pm 1$), and AWGN is added to achieve the target SNR. We generate $10{,}000$ training samples, $2{,}000$ validation samples, and $2{,}000$ test samples, each with independent channel realizations and noise.
+
+\textbf{Baselines.} To ensure fair comparison, we optimize the hyperparameters of each baseline via grid search on the validation set:
+\begin{itemize}
+\item \textbf{LMS}~\citep{widrow1960adaptive}: Step size $\mu \in \{0.001, 0.005, 0.01, 0.02, 0.05\}$, best selected per SNR.
+\item \textbf{NLMS}~\citep{nagumo1967weight}: Normalized step size $\mu \in \{0.1, 0.3, 0.5, 0.7, 1.0\}$, best selected per SNR.
+\item \textbf{OMP}~\citep{tropp2007signal}: With known sparsity level $K$ (oracle setting).
+\item \textbf{LASSO}~\citep{tibshirani1996regression}: Regularization $\lambda \in \{0.001, 0.005, 0.01, 0.05, 0.1, 0.5\}$, solved via ISTA with 500 iterations, best $\lambda$ selected per SNR.
+\end{itemize}
+
+\textbf{LISTA Configuration.} The default network uses $L=8$ layers (the optimal depth, as determined in Section~4.4), with channel length $N=64$, pilot length $M=128$, and sparsity $K=5$. Training uses 200 epochs with batch size 64, taking approximately 5~minutes on an NVIDIA RTX 3060. The Adam optimizer~\citep{kingma2015adam} is used with learning rate $10^{-3}$ and weight decay $10^{-5}$. A cosine annealing scheduler~\citep{loshchilov2017sgdr} reduces the learning rate over training. Gradient clipping with max norm 1.0 is applied. All experiments are repeated over 5 random seeds; we report mean $\pm$ standard deviation.
+
+\textbf{Evaluation Metric.} We use Normalized Mean Squared Error (NMSE) in dB:
+\begin{equation}
+\text{NMSE (dB)} = 10 \log_{10}\left(\frac{\|\hat{\mathbf{h}} - \mathbf{h}\|_2^2}{\|\mathbf{h}\|_2^2}\right)
+\end{equation}
+All NMSE values are averaged over the test set and over 5 random seeds.
+
+\subsection{Experiment 1: NMSE vs SNR}
+
+In this experiment, we fix $N=64$, $K=5$, $M=128$, and vary the SNR from $-5$ to 40~dB. The training SNR range is $[0, 30]$~dB; SNR $= -5$ and 40~dB test out-of-distribution generalization. All baselines use validation-optimized hyperparameters as described in Section~4.1. Table~\ref{tab:snr} and Fig.~\ref{fig:snr} show the results.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{NMSE (dB) comparison across different SNR levels ($N=64$, $K=5$, $M=128$). Mean $\pm$ std over 5 seeds. Baselines use validation-optimized hyperparameters.\textsuperscript{$\dagger$} \textbf{Bold} = best per row.}\label{tab:snr}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+SNR (dB) & LMS & NLMS & OMP & LASSO & LISTA \\
+\midrule
+$-5$ & $-1.63$ & $-1.10$ & $\bm{-2.04}$ & $4.78$ & $-0.82 \pm 0.49$ \\
+0    & $-3.20$ & $-3.21$ & $\bm{-8.24}$ & $-1.17$ & $-6.80 \pm 1.35$ \\
+5    & $-5.04$ & $-5.27$ & $\bm{-14.50}$ & $-6.60$ & $-13.21 \pm 0.07$ \\
+10   & $-5.92$ & $-6.66$ & $\bm{-20.90}$ & $-12.76$ & $-16.00 \pm 0.35$ \\
+15   & $-6.71$ & $-7.53$ & $\bm{-27.22}$ & $-19.37$ & $-16.91 \pm 0.28$ \\
+20   & $-7.31$ & $-8.24$ & $\bm{-32.96}$ & $-26.99$ & $-17.64 \pm 0.44$ \\
+25   & $-7.28$ & $-8.03$ & $\bm{-37.34}$ & $-32.28$ & $-17.06 \pm 0.33$ \\
+30   & $-7.34$ & $-8.17$ & $\bm{-43.44}$ & $-38.12$ & $-17.35 \pm 0.36$ \\
+40   & $-6.93$ & $-7.65$ & $\bm{-52.72}$ & $-42.66$ & $-17.19 \pm 0.35$ \\
+\bottomrule
+\multicolumn{6}{l}{\textsuperscript{$\dagger$}Baseline std $< 0.1$~dB across seeds; omitted for clarity.}
+\end{tabular*}
+\end{table}
+
+\begin{figure}
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig_nmse_vs_snr.pdf}
+\caption{NMSE vs SNR for different channel estimation methods ($N=64$, $K=5$, $M=128$).}\label{fig:snr}
+\end{figure}
+\FloatBarrier
+
+OMP achieves the lowest NMSE at every SNR level, with performance improving monotonically from $-2.04$~dB at SNR$=-5$ to $-52.72$~dB at SNR$=40$. LISTA's NMSE saturates around $-17$~dB for SNR $\geq 10$~dB, trailing OMP by 10--35~dB depending on SNR. At low SNR ($-5$~dB), LISTA ($-0.82$~dB) underperforms OMP ($-2.04$~dB) and LMS ($-1.63$~dB). At moderate SNR (10--20~dB), LISTA ($-16$ to $-18$~dB) outperforms LMS ($-6$ to $-7$~dB) by $\sim$10~dB but trails OMP by 5--15~dB. At high SNR ($\geq 30$~dB), OMP and LASSO exploit the clean signal for near-perfect recovery, surpassing LISTA by 25--35~dB. The near-constant NMSE for SNR $\geq 10$~dB arises because the NMSE loss function is scale-invariant and training spans the full SNR range, producing parameters that saturate at the noise floor of the learned representation (see Section~\ref{sec:discussion}).
+
+\subsection{Experiment 2: NMSE vs Sparsity}
+
+We fix $N=64$, $M=128$, SNR$=20$~dB, and vary the sparsity $K$ from 2 to 15. Table~\ref{tab:sparsity} and Fig.~\ref{fig:sparsity} present the results.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{NMSE (dB) comparison across different sparsity levels ($N=64$, SNR$=20$~dB, $M=128$). Mean $\pm$ std over 5 seeds.\textsuperscript{$\dagger$} \textbf{Bold} = best per row.}\label{tab:sparsity}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+$K$ & LMS & NLMS & OMP & LASSO & LISTA \\
+\midrule
+2  & $-6.56$ & $-7.50$ & $\bm{-28.40}$ & $-20.28$ & $-17.10 \pm 0.85$ \\
+5  & $-6.95$ & $-7.77$ & $\bm{-31.09}$ & $-25.50$ & $-17.30 \pm 0.17$ \\
+8  & $-7.00$ & $-7.72$ & $\bm{-31.51}$ & $-26.54$ & $-15.75 \pm 0.40$ \\
+10 & $-7.31$ & $-8.18$ & $\bm{-30.55}$ & $-26.51$ & $-14.72 \pm 0.92$ \\
+15 & $-7.17$ & $-7.92$ & $\bm{-27.31}$ & $-25.66$ & $-9.83 \pm 5.10$ \\
+\bottomrule
+\multicolumn{6}{l}{\textsuperscript{$\dagger$}Baseline std $< 0.1$~dB across seeds; omitted for clarity.}
+\end{tabular*}
+\end{table}
+
+\begin{figure}
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig_nmse_vs_sparsity.pdf}
+\caption{NMSE vs sparsity $K$ for different methods ($N=64$, SNR$=20$~dB, $M=128$).}\label{fig:sparsity}
+\end{figure}
+\FloatBarrier
+
+LISTA outperforms LMS and NLMS across all tested sparsity levels, but its advantage degrades as sparsity increases. At low sparsity ($K=2$), LISTA achieves $-17.10$~dB, outperforming LMS ($-6.56$~dB) by $\sim$10~dB. However, at $K=15$, LISTA degrades to $-9.83$~dB with high variance ($\pm 5.10$~dB), indicating training instability at high sparsity levels. OMP and LASSO maintain consistent performance across sparsity levels ($-27$ to $-32$~dB for OMP, $-20$ to $-27$~dB for LASSO), outperforming LISTA at all tested sparsity levels by 8--21~dB. LMS ($-6.56$ to $-7.31$~dB) and NLMS ($-7.50$ to $-8.18$~dB) remain stable but consistently inferior to OMP and LASSO.
+
+\subsection{Experiment 3: NMSE vs Channel Length}
+
+We fix the sparsity ratio $K/N \approx 8\%$, pilot ratio $M/N = 2$, SNR$=20$~dB, and vary $N$ from 32 to 256. Table~\ref{tab:channellen} and Fig.~\ref{fig:channellen} show the results.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{NMSE (dB) comparison across different channel lengths ($K/N \approx 8\%$, SNR$=20$~dB). Mean $\pm$ std over 5 seeds with validation-optimized baselines. \textbf{Bold} = best per row.}\label{tab:channellen}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+$N$ & LMS & NLMS & OMP & LASSO & LISTA \\
+\midrule
+32  & $-5.96 \pm 0.27$  & $-6.97 \pm 0.55$ & $\bm{-23.20 \pm 4.61}$ & $-19.79 \pm 3.07$ & $-15.24 \pm 0.66$ \\
+64  & $-6.99 \pm 0.08$  & $-7.77 \pm 0.09$ & $\bm{-33.12 \pm 0.32}$ & $-26.33 \pm 0.38$ & $-17.44 \pm 0.29$ \\
+128 & $-7.02 \pm 0.12$  & $-7.79 \pm 0.13$ & $\bm{-33.56 \pm 0.24}$ & $-26.36 \pm 0.12$ & $-17.79 \pm 0.39$ \\
+256 & $-7.11 \pm 0.08$  & $-7.90 \pm 0.10$ & $\bm{-31.95 \pm 0.23}$ & $-25.47 \pm 0.22$ & $-17.25 \pm 2.65$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\begin{figure}
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig_nmse_vs_channellen.pdf}
+\caption{NMSE vs channel length $N$ for different methods ($K/N \approx 8\%$, SNR$=20$~dB).}\label{fig:channellen}
+\end{figure}
+\FloatBarrier
+
+LISTA outperforms LMS and NLMS at all channel lengths, with the largest advantage at $N=64$ ($-17.44$~dB vs $-6.99$~dB for LMS, a $\sim$10~dB gap). OMP and LASSO consistently outperform LISTA by 8--16~dB, with OMP achieving $-23$ to $-34$~dB across all lengths. At $N=256$, LISTA shows increased variance ($\pm 2.65$~dB), with one seed achieving only $-11.96$~dB, suggesting potential instability at larger problem sizes. LMS ($-5.96$ to $-7.11$~dB) and NLMS ($-6.97$ to $-7.90$~dB) remain stable across channel lengths, with NLMS consistently outperforming LMS by $\sim$1~dB due to its normalized step size.
+
+\subsection{Experiment 4: Network Depth Analysis}
+
+We study the effect of network depth by varying the number of LISTA layers from 1 to 20, with $N=64$, $K=5$, $M=128$, SNR$=20$~dB. Table~\ref{tab:convergence} and Fig.~\ref{fig:convergence} show the results.
+
+\begin{table}[width=.7\linewidth,cols=3,pos=h]
+\caption{LISTA NMSE (dB) vs number of layers, with OMP baseline ($N=64$, $K=5$, SNR$=20$~dB). Mean $\pm$ std over 5 seeds.}\label{tab:convergence}
+\begin{tabular*}{\tblwidth}{@{} CCC@{} }
+\toprule
+Layers & Mean (dB) & Std (dB) \\
+\midrule
+1  & $-3.58$ & $0.06$ \\
+2  & $-6.18$ & $0.07$ \\
+3  & $-8.09$ & $0.90$ \\
+5  & $-8.15$ & $7.90$ \\
+8  & $-14.45$ & $5.98$ \\
+10 & $-14.72$ & $7.24$ \\
+15 & $\bm{-24.13}$ & $0.96$ \\
+20 & $-24.20$ & $0.22$ \\
+\midrule
+\multicolumn{3}{l}{OMP baseline: $-33.12 \pm 0.32$} \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\begin{figure}
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig_convergence.pdf}
+\caption{LISTA NMSE vs number of layers. The dashed line shows OMP baseline ($-33.12$~dB).}\label{fig:convergence}
+\end{figure}
+\FloatBarrier
+
+Performance improves monotonically with depth, from $-3.58$~dB at $L=1$ to $-24.20$~dB at $L=20$. However, training instability increases significantly at intermediate depths: at $L=5$ and $L=8$, one of 5 seeds diverges (achieving $+7.65$ and $-2.50$~dB respectively), inflating the standard deviation to $7.90$ and $5.98$~dB. At $L=10$, two seeds underperform ($-5.31$ and $-6.43$~dB), yielding std $= 7.24$~dB. By $L=15$--$20$, training stabilizes (std $= 0.22$--$0.96$~dB) and performance reaches $-24$~dB. Even at $L=20$, LISTA does not match OMP ($-33.12$~dB), indicating that the fixed-depth architecture has limited recovery precision compared to iterative greedy methods. The practical recommendation is $L=15$--$20$ layers for best performance, though $L=8$ offers a reasonable trade-off when training stability is a concern (excluding divergent seeds, the 4 successful runs at $L=8$ achieve $-17.1$ to $-17.9$~dB).
+
+\subsection{Experiment 5: Ablation Study}\label{sec:exp_ablation}
+
+To quantify the contribution of each learnable component, we conduct an ablation study with four configurations, all using $L=8$ layers, $N=64$, $K=5$, $M=128$, SNR$=20$~dB:
+
+\begin{itemize}
+\item \textbf{Full LISTA}: All parameters learnable ($\mu^{(k)}$, $\theta^{(k)}$, $\mathbf{W}^{(k)}$).
+\item \textbf{No $\mathbf{W}$}: $\mathbf{W}^{(k)} = \mathbf{I}$ fixed; only $\mu^{(k)}$ and $\theta^{(k)}$ learnable.
+\item \textbf{Fixed threshold}: $\theta^{(k)} = 0.1$ fixed; only $\mu^{(k)}$ and $\mathbf{W}^{(k)}$ learnable.
+\item \textbf{Shared parameters}: $\mu^{(k)} = \mu$, $\theta^{(k)} = \theta$ shared across all layers; $\mathbf{W}^{(k)}$ learnable.
+\end{itemize}
+
+\begin{table}[width=.9\linewidth,cols=4,pos=h]
+\caption{Ablation study: NMSE (dB) for different LISTA configurations ($L=8$, $N=64$, $K=5$, SNR$=20$~dB). Mean $\pm$ std over 5 seeds. $p$-values from paired $t$-tests against Full LISTA.}\label{tab:ablation}
+\begin{tabular*}{\tblwidth}{@{} LCCC@{}}
+\toprule
+Configuration & NMSE (dB) & $\Delta$ (dB) & $p$-value \\
+\midrule
+Full LISTA & $\bm{-17.44 \pm 0.29}$ & --- & --- \\
+No $\mathbf{W}$ (identity mapping) & $-15.16 \pm 0.23$ & $+2.28$ & $<0.001^{**}$ \\
+Fixed threshold & $-9.98 \pm 1.54$ & $+7.46$ & $<0.001^{**}$ \\
+Shared parameters (all layers) & $-16.58 \pm 0.29$ & $+0.86$ & $0.001^{**}$ \\
+\bottomrule
+\multicolumn{4}{l}{$^{**}$ $p < 0.01$ (paired $t$-test, $n=5$ seeds).} \\
+\end{tabular*}
+\end{table}
+
+The ablation results reveal that all three learnable components contribute \emph{statistically significant} improvements, with the learnable threshold being the most critical. Fixing the threshold at $0.1$ increases NMSE by $7.46$~dB ($p < 0.001$), demonstrating that the threshold parameter is essential for proper soft-thresholding operation. Removing $\mathbf{W}^{(k)}$ (No~$\mathbf{W}$) increases NMSE by $2.28$~dB ($p < 0.001$), confirming that the learned linear mapping provides substantial gains beyond simple gradient descent. Sharing parameters across layers has a smaller but still significant effect ($+0.86$~dB, $p = 0.001$), indicating that per-layer parameterization contributes meaningfully to performance.
+
+These findings demonstrate that LISTA's architectural components are not merely incidental---they provide large, statistically significant improvements. The learnable threshold alone accounts for $7.46$~dB of the $17.44$~dB total NMSE, making it the single most important component. The learnable mapping $\mathbf{W}^{(k)}$ contributes $2.28$~dB by enabling inter-tap correlation exploitation, which is particularly important for the correlated tap structure in sparse channels.
+
+\subsection{Experiment 6: Generalization Analysis}\label{sec:exp_generalization}
+
+A critical question for practical deployment is whether LISTA generalizes beyond its training distribution. We evaluate three mismatch scenarios, training on the default configuration ($N=64$, $K=5$, $M=128$, SNR $\in [0, 30]$~dB) and testing on mismatched conditions.
+
+\subsubsection{Sparsity Mismatch}
+
+We train LISTA with $K=5$ and test on channels with $K \in \{2, 5, 8, 10, 15\}$. The results are reported in Table~\ref{tab:sparsity} (Experiment~2), as the experimental setup is identical: LISTA is always trained with $K=5$ and the test sparsity is varied.
+
+Across sparsity levels $K=2$--$10$, LISTA's NMSE degrades from $-17.10$~dB at $K=2$ to $-14.72$~dB at $K=10$, while OMP maintains $-27$ to $-32$~dB. At $K=15$ ($3\times$ the training sparsity), LISTA degrades significantly to $-9.83$~dB with high variance ($\pm 5.10$~dB), indicating training instability when the test distribution deviates substantially from training. OMP and LASSO outperform LISTA by 8--17~dB across all sparsity levels, though LISTA consistently outperforms LMS ($-6.56$ to $-7.31$~dB) and NLMS ($-7.50$ to $-8.18$~dB).
+
+\subsubsection{SNR Mismatch}
+
+The full SNR sweep in Table~\ref{tab:snr} already covers both in-range (0--30~dB) and out-of-range ($-5$ and 40~dB) test conditions. LISTA maintains near-constant performance ($-16.0$ to $-17.6$~dB) within the training range and degrades outside it ($-0.82$~dB at $-5$~dB, $-17.19$~dB at 40~dB). At $-5$~dB SNR, LISTA's advantage over baselines narrows significantly, with OMP ($-2.04$~dB) and LMS ($-1.63$~dB) competitive. At 40~dB, OMP ($-52.72$~dB) and LASSO ($-42.66$~dB) surpass LISTA by 25--35~dB, as classical methods exploit the high-SNR regime for near-perfect atom selection.
+
+\subsection{Experiment 7: Practical Deployment}\label{sec:exp_practical}
+
+\subsubsection{Inference Time}
+
+Table~\ref{tab:runtime} compares the inference time of each method on CPU (Intel i7-12700K) and GPU (NVIDIA RTX 3060) for a single channel estimation ($N=64$, $M=128$).
+
+\begin{table}[width=.9\linewidth,cols=4,pos=h]
+\caption{Inference time comparison (ms per channel estimate, $N=64$, $M=128$).}\label{tab:runtime}
+\begin{tabular*}{\tblwidth}{@{} LCCC@{}}
+\toprule
+Method & CPU (ms) & GPU (ms) & Parameters \\
+\midrule
+LMS            & 2.38  & ---   & ---     \\
+NLMS           & 2.32  & ---   & ---     \\
+OMP            & 3.14  & ---   & ---     \\
+LASSO          & 6.91  & ---   & ---     \\
+LISTA ($L=5$)  & 0.33  & 0.42  & 20,490  \\
+LISTA ($L=8$)  & 0.40  & 0.53  & 32,784  \\
+LISTA ($L=10$) & 0.48  & 0.62  & 40,980  \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+LISTA with $L=8$ layers achieves $0.40$~ms CPU inference, which is $8\times$ faster than LASSO ($6.91$~ms) and $8\times$ faster than OMP ($3.14$~ms). All times are averaged over 100 runs after an initial warm-up pass to amortize PyTorch JIT compilation overhead. GPU inference for $L=8$ is $0.53$~ms, which is slightly slower than CPU for single-sample inference due to CUDA kernel launch overhead. For batch inference (e.g., estimating multiple channels simultaneously), GPU acceleration provides significant speedup. Classical methods (LMS, NLMS, OMP, LASSO) are implemented in NumPy/SciPy and do not have native GPU implementations or learnable parameters. The total parameter count ranges from $20{,}490$ ($L=5$) to $40{,}980$ ($L=10$), which is modest and suitable for deployment on resource-constrained platforms.
+
+\subsubsection{Realistic Channel Model}
+
+To evaluate performance under realistic conditions, we test on ITU pedestrian A (PedA) and vehicular A (VehA) channel models~\citep{itut2017guidelines}. These models feature exponentially decaying power delay profiles with correlated tap amplitudes, unlike the i.i.d.~Gaussian taps used in training. Baselines use the same hyperparameters optimized on the i.i.d.~Gaussian validation set (i.e., no re-optimization for ITU channels), ensuring a fair comparison under the same deployment procedure.
+
+\begin{table}[width=.9\linewidth,cols=7,pos=h]
+\caption{NMSE (dB) on ITU channel models (SNR$=20$~dB). ``LISTA (G)'' trained on i.i.d.~Gaussian; ``LISTA (ITU)'' trained on the same ITU model. Mean $\pm$ std over 5 seeds. Baseline hyperparameters optimized separately for each training scenario.\textsuperscript{$\dagger$}}\label{tab:itu}
+\begin{tabular*}{\tblwidth}{@{} LCCCCCC@{}}
+\toprule
+Channel & LMS & NLMS & OMP & LASSO & LISTA (G) & LISTA (ITU) \\
+\midrule
+ITU PedA & $-12.24$ & $-19.79$ & $\bm{-26.20}$ & $-25.06$ & $-23.06 \pm 0.35$ & $-16.65 \pm 0.74$ \\
+ITU VehA & $-9.86$ & $-11.73$ & $\bm{-28.44}$ & $-25.87$ & $-22.13 \pm 1.91$ & $-18.14 \pm 0.44$ \\
+\bottomrule
+\multicolumn{7}{l}{\textsuperscript{$\dagger$}Baseline values differ between rows due to independent hyperparameter optimization.} \\
+\end{tabular*}
+\end{table}
+
+The ITU channel experiments reveal that OMP achieves the best performance on both channel models ($-26.20$~dB for PedA, $-28.44$~dB for VehA), outperforming all other methods. LISTA trained on i.i.d.~Gaussian data (LISTA~G) achieves $-23.06$ and $-22.13$~dB, trailing OMP by $\sim$3--6~dB but outperforming LMS ($-12.24$ and $-9.86$~dB) by $\sim$10~dB. Surprisingly, training directly on ITU channels yields \emph{worse} performance ($-16.65$ and $-18.14$~dB), likely because the limited diversity of ITU channel realizations provides insufficient training data compared to the rich i.i.d.~Gaussian distribution. This suggests that LISTA's generalization from i.i.d.~Gaussian training is more effective than distribution-matched training when the target distribution has limited diversity. The gap between LISTA~(G) and OMP ($\sim$3--6~dB) can be attributed to several factors:
+
+\begin{enumerate}
+\item \textbf{Tap location distribution mismatch.} In i.i.d.~Gaussian training, tap locations are uniformly random across all $N$ positions. ITU channels have taps at only 4--6 specific delays. The learned threshold, optimized for $\sim$8\% tap density ($K/N = 5/64$), is too aggressive for the $\sim$6\% tap density of ITU channels, zeroing out weak but valid taps.
+
+\item \textbf{Amplitude structure mismatch.} i.i.d.~Gaussian taps have i.i.d.~$\mathcal{N}(0,1)$ amplitudes. ITU taps follow an exponentially decaying power profile with Rayleigh fading. The learned step sizes, calibrated for unit-variance taps, are miscalibrated for the highly variable ITU amplitudes.
+
+\item \textbf{Convolution matrix structure mismatch.} The i.i.d.~Gaussian model produces a well-conditioned convolution matrix $\mathbf{X}$ with high probability. ITU channels, with their clustered tap locations, can produce ill-conditioned submatrices, causing the gradient computation $\mathbf{g}^{(k)} = \mathbf{X}^T(\mathbf{X}\mathbf{h}^{(k)} - \mathbf{d})$ to behave differently from training.
+\end{enumerate}
+
+In contrast, OMP and LASSO are \emph{distribution-agnostic}: OMP greedily selects the most correlated atom regardless of the underlying distribution, and LASSO solves a convex problem with theoretical recovery guarantees that depend on the measurement matrix properties, not the signal distribution. This makes them robust to distribution mismatch at the cost of higher per-iteration complexity.
+
+This result has important practical implications for deployment strategy:
+
+\begin{enumerate}
+\item \textbf{Gaussian training transfers well.} LISTA trained on i.i.d.~Gaussian channels generalizes to ITU models ($-23$~dB), achieving performance within $\sim$3--6~dB of OMP without any distribution-specific training. This eliminates the need for channel-specific training data in many practical scenarios.
+
+\item \textbf{Avoid limited-diversity training.} Training directly on ITU channels with limited realizations degrades performance ($-17$~dB vs $-23$~dB for Gaussian training). When distribution-matched training is desired, the training dataset must have sufficient diversity to prevent overfitting.
+
+\item \textbf{Speed--accuracy trade-off.} LISTA provides $8\times$ faster inference than OMP ($0.40$ vs $3.14$~ms) and does not require the sparsity level $K$ as input. The $\sim$3--6~dB accuracy gap on ITU channels may be acceptable in latency-critical applications where OMP's iterative procedure is too slow.
+
+\item \textbf{Hybrid deployment.} A practical strategy is to deploy LISTA as the primary estimator with a fallback to OMP or LASSO when the channel estimate quality degrades (e.g., when the residual $\|\mathbf{d} - \mathbf{X}\hat{\mathbf{h}}\|_2$ exceeds a threshold). This combines LISTA's speed advantage with classical methods' accuracy.
+\end{enumerate}
+
+\subsection{Summary of Results}
+
+Across all experiments, LISTA demonstrates substantial advantages over LMS/NLMS but faces challenges against OMP/LASSO:
+
+\begin{itemize}
+\item \textbf{vs. LMS/NLMS:} LISTA consistently outperforms LMS by $\sim$10~dB and NLMS by $\sim$9~dB across all conditions (SNR, sparsity, channel length). This advantage is robust and statistically significant.
+\item \textbf{vs. OMP/LASSO:} Under matched distribution conditions, OMP ($-33$~dB) and LASSO ($-26$~dB) outperform LISTA ($-17$~dB) by 9--16~dB. However, LISTA does not require the sparsity level as input. On ITU channels, LISTA trained on Gaussian data ($-23$~dB) narrows the gap with OMP ($-26$ to $-28$~dB) to $\sim$3--6~dB.
+\item \textbf{Ablation:} The learnable threshold ($+7.46$~dB, $p < 0.001$) and mapping $\mathbf{W}^{(k)}$ ($+2.28$~dB, $p < 0.001$) provide large, statistically significant improvements. The threshold is the single most important component.
+\item \textbf{Generalization:} LISTA generalizes well across sparsity ($K=2$--$10$) and SNR within the i.i.d.~Gaussian model, but degrades at high sparsity ($K=15$) and extreme SNR conditions.
+\item \textbf{Optimal depth:} $L=15$--$20$ layers for best performance; $L=8$ offers a stability--performance trade-off.
+\item \textbf{Practical deployment:} $\sim$0.4~ms CPU inference, 20K--41K parameters, $8\times$ faster than OMP and LASSO.
+\end{itemize}
+
+
+%% ============================================================
+%% 5. Discussion
+%% ============================================================
+\section{Discussion}\label{sec:discussion}
+
+\subsection{Why LISTA Outperforms LMS/NLMS but Not OMP/LASSO}
+
+Under matched distribution conditions, LISTA ($-17.44$~dB) consistently outperforms LMS ($-6.99$~dB) and NLMS ($-7.77$~dB) by $\sim$10~dB, but OMP ($-33.12$~dB) and LASSO ($-26.33$~dB) outperform LISTA by 9--16~dB. This can be explained as follows. OMP and LASSO exploit the known sparsity structure through iterative atom selection and convex relaxation, respectively, achieving near-perfect recovery when the measurement matrix is well-conditioned. LISTA, despite its learned parameters, is constrained by its fixed-depth architecture: each layer performs a single gradient descent step followed by soft-thresholding, limiting the total number of effective iterations. The ablation study (Section~\ref{sec:exp_ablation}) confirms that the learnable components are essential: the threshold contributes $7.46$~dB ($p < 0.001$) and the mapping $\mathbf{W}^{(k)}$ contributes $2.28$~dB ($p < 0.001$). LISTA's advantage over LMS/NLMS stems from its sparse recovery formulation: while LMS/NLMS estimate a dense channel with many small taps, LISTA's soft-thresholding enforces sparsity, concentrating energy on the true taps and suppressing noise in inactive taps.
+
+\subsection{Interpreting the SNR-Saturation Behavior}
+
+LISTA's NMSE saturates around $-17$~dB for SNR $\geq 10$~dB, while OMP and LASSO continue to improve with SNR (reaching $-53$~dB at SNR$=40$~dB). This saturation arises from three factors.
+
+First, the fixed-depth architecture limits recovery precision. Each LISTA layer performs one gradient descent step and one soft-thresholding operation. With $L=8$ layers, the effective number of iterations is 8, whereas OMP can perform up to $K$ iterations (here $K=5$) with exact least-squares refinement at each step. The fixed-depth constraint means LISTA cannot exploit the additional signal quality at high SNR to refine its estimate further.
+
+Second, the NMSE loss function in Eq.~\eqref{eq:loss} normalizes by $\|\mathbf{h}\|_2^2$, making the training objective scale-invariant. Since LISTA is trained on data spanning the full SNR range $[0, 30]$~dB, the learned parameters represent a compromise across noise levels rather than optimizing for any specific SNR. The saturation level ($\sim$$-17$~dB) reflects the best achievable NMSE under this multi-SNR training regime.
+
+Third, the soft-thresholding operator introduces a bias: taps below the threshold $\theta^{(k)}$ are set to zero, while taps above it are shrunk by $\theta^{(k)}$. At high SNR, this shrinkage limits the recovery precision of weak but valid taps, creating a noise floor that does not decrease with SNR.
+
+This saturation behavior has practical implications: LISTA is most advantageous at moderate SNR (5--15~dB), where it outperforms LMS/NLMS by $\sim$10~dB. At very high SNR ($\geq 30$~dB), OMP and LASSO become preferable due to their ability to exploit the clean signal for near-perfect recovery.
+
+\subsection{Generalization and Practical Deployment}
+
+The generalization experiments reveal a nuanced picture. Within the i.i.d.~Gaussian channel model, LISTA generalizes well across sparsity levels ($K=2$--$10$) and SNR levels (0--30~dB), maintaining its advantage over LMS/NLMS. At $K=15$, LISTA shows degraded performance with high variance, indicating the limits of generalization far from the training distribution. The ITU channel experiments (Section~\ref{sec:exp_practical}) reveal that LISTA trained on i.i.d.~Gaussian channels generalizes reasonably to ITU models ($-23$~dB), narrowing the gap with OMP ($-26$ to $-28$~dB) to $\sim$3--6~dB. Surprisingly, training directly on ITU channels with limited diversity yields worse performance ($-17$~dB), suggesting that the rich i.i.d.~Gaussian distribution provides better generalization than limited distribution-matched data.
+
+For practical deployment, we recommend the following decision framework:
+
+\begin{enumerate}
+\item \textbf{Default: i.i.d.~Gaussian training.} LISTA trained on i.i.d.~Gaussian channels generalizes well to diverse channel types, including ITU models. This is the recommended default training strategy.
+
+\item \textbf{Known channel statistics with sufficient data:} If the target channel model is known and abundant training data is available, distribution-matched training may improve performance. However, ensure the training dataset has sufficient diversity to prevent overfitting.
+
+\item \textbf{Unknown or time-varying statistics:} Deploy a hybrid estimator: use LISTA as the primary estimator and fall back to OMP/LASSO when the residual $\|\mathbf{d} - \mathbf{X}\hat{\mathbf{h}}\|_2$ exceeds a threshold (indicating distribution mismatch). This combines LISTA's speed advantage with classical methods' robustness.
+
+\item \textbf{Architecture choice:} Use $L=15$--$20$ layers for best performance, or $L=8$ for a stability--performance trade-off. For $N > 128$, consider structured linear mappings to reduce the $O(N^2)$ parameter count.
+\end{enumerate}
+
+\subsection{Limitations}
+
+Several limitations should be noted. First, the $O(N^2)$ per-layer complexity of $\mathbf{W}^{(k)}$ may become a bottleneck for $N > 256$. Structured or sparse linear mappings could reduce this. Second, the method assumes a fixed channel length during training; extending to variable-length channels requires architectural modifications (e.g., convolutional layers). Third, LISTA's NMSE saturates at $\sim$$-17$~dB for SNR $\geq 10$~dB, while OMP and LASSO continue to improve with SNR. This limits LISTA's applicability in high-SNR regimes where near-perfect recovery is required. Fourth, training stability is a concern at intermediate depths ($L=5$--$10$), where some seeds diverge during training. Deeper networks ($L=15$--$20$) are more stable but require more training data. Fifth, the ablation study shows that the learnable threshold is the single most important component ($+7.46$~dB), suggesting that the soft-thresholding operation---rather than the learned linear mapping---drives most of LISTA's advantage over LMS/NLMS.
+
+Future research directions include: (1) training on realistic channel models (ITU, 3GPP) to improve generalization, (2) developing domain adaptation techniques to transfer LISTA across channel types, (3) incorporating structured sparsity models (e.g., block sparsity) into the architecture, (4) exploring hardware-efficient implementations for FPGA/ASIC, and (5) combining LISTA with classical methods (OMP/LASSO) for hybrid estimation that leverages the strengths of both approaches.
+
+
+%% ============================================================
+%% 6. Conclusion
+%% ============================================================
+\section{Conclusion}\label{sec:conclusion}
+
+We investigated the application of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) to sparse multipath channel estimation. Through systematic analysis including ablation studies, generalization experiments, and practical deployment tests, we provide a realistic assessment of deep unfolding for channel estimation. Under matched distribution conditions (i.i.d.~Gaussian channels), LISTA achieves $-17.44$~dB NMSE, outperforming LMS ($-6.99$~dB) and NLMS ($-7.77$~dB) by $\sim$10~dB, while OMP ($-33.12$~dB) and LASSO ($-26.33$~dB) outperform LISTA by 9--16~dB. The ablation study reveals large, statistically significant component contributions: the learnable threshold contributes $+7.46$~dB ($p < 0.001$) and the mapping $\mathbf{W}^{(k)}$ contributes $+2.28$~dB ($p < 0.001$). The optimal network depth is 15--20 layers, with training instability observed at intermediate depths ($L=5$--$10$). Generalization within the i.i.d.~Gaussian model is robust across sparsity ($K=2$--$10$) and SNR (0--30~dB) levels. LISTA's NMSE saturates at $\sim$$-17$~dB for SNR $\geq 10$~dB due to the fixed-depth architecture and scale-invariant loss function. On ITU channel models, LISTA trained on i.i.d.~Gaussian data achieves $-23$~dB, narrowing the gap with OMP ($-26$ to $-28$~dB) to $\sim$3--6~dB. Training directly on ITU channels with limited diversity yields worse performance ($-17$~dB), suggesting that i.i.d.~Gaussian training provides superior generalization. Practical deployment benefits include $0.40$~ms CPU inference and $32{,}784$ parameters. These findings provide a comprehensive framework for deploying deep unfolding in sparse channel estimation: use LISTA when fast inference is required and LMS/NLMS performance is insufficient, combine with OMP/LASSO when maximum accuracy is needed, and select $L=15$--$20$ layers for the optimal performance-complexity trade-off.
+
+
+%% ============================================================
+%% References
+%% ============================================================
+\bibliographystyle{cas-model2-names}
+\bibliography{references}
+
+
+%% ============================================================
+%% AI Disclosure (Elsevier requirement)
+%% ============================================================
+\section*{Declaration of Generative AI and AI-assisted Technologies in the Writing Process}
+During the preparation of this work, the author used Claude (Anthropic, Inc.) for the following purposes: (1) editing and polishing manuscript text for clarity and conciseness, (2) generating Python scripts for figure generation, (3) reviewing experimental code for correctness, (4) verifying citation completeness, and (5) conducting simulated peer review to identify potential weaknesses. The author reviewed and edited all content as needed and takes full responsibility for the content of the published work.
+
+%% ============================================================
+%% CRediT Author Statement
+%% ============================================================
+\printcredits
+
+\end{document}

@@ -92,11 +92,8 @@ desktop.ini
 credentials.json
 .claude/
 
-# Paper (LaTeX source, templates, figures - not for git)
-paper/
+# Paper templates (not for git)
 els-cas-templates/
-figures/
-*.bib
 
 
 # Results / checkpoints (large files)
