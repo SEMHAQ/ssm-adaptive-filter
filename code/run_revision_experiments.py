@@ -49,7 +49,8 @@ def compute_nmse_per_sample(h_est, h_true):
     return 10 * np.log10(err / power + 1e-10).numpy()
 
 
-def generate_itu_channel(channel_length, model='peda', num_samples=1000):
+def generate_itu_channel(channel_length, model='peda', num_samples=1000,
+                         randomize_positions=False):
     """
     Generate ITU channel models with exponentially decaying power delay profile.
 
@@ -57,32 +58,46 @@ def generate_itu_channel(channel_length, model='peda', num_samples=1000):
         channel_length: Number of taps
         model: 'peda' (Pedestrian A) or 'veha' (Vehicular A)
         num_samples: Number of channel realizations
+        randomize_positions: If True, randomize tap positions (realistic sparse
+            channel); if False, use fixed ITU positions (original behavior)
     Returns:
         h: (num_samples, channel_length) channel impulse responses
     """
     if model == 'peda':
-        # ITU Pedestrian A: 4 taps, exponential decay
         delays_ns = [0, 50, 110, 170, 240, 310]  # ns
         powers_db = [0, -9.7, -19.2, -22.8, -25.1, -27.0]  # dB
     elif model == 'veha':
-        # ITU Vehicular A: 6 taps
         delays_ns = [0, 310, 710, 1090, 1730, 2510]  # ns
         powers_db = [0, -1.0, -9.0, -10.0, -15.0, -20.0]  # dB
     else:
         raise ValueError(f"Unknown model: {model}")
+
+    num_taps = len(delays_ns)
 
     # Convert to linear power
     powers_linear = 10 ** (np.array(powers_db) / 10)
     powers_linear = powers_linear / powers_linear.sum()  # normalize
 
     h = np.zeros((num_samples, channel_length))
-    for i, (delay_ns, power) in enumerate(zip(delays_ns, powers_linear)):
-        tap_idx = int(delay_ns * 1e-9 * 1e6 * channel_length)  # rough mapping
-        if tap_idx < channel_length:
-            # Rayleigh fading with specified power
-            h[:, tap_idx] = np.sqrt(power / 2) * (
-                np.random.randn(num_samples) + 1j * np.random.randn(num_samples)
-            ).real
+
+    if randomize_positions:
+        # Random tap positions (like i.i.d. Gaussian sparse channels)
+        for s in range(num_samples):
+            tap_positions = np.random.choice(channel_length, num_taps, replace=False)
+            tap_positions.sort()
+            for j, (pos, power) in enumerate(zip(tap_positions, powers_linear)):
+                # Rayleigh fading with specified power
+                h[s, pos] = np.sqrt(power / 2) * (
+                    np.random.randn() + 1j * np.random.randn()
+                ).real
+    else:
+        # Fixed ITU positions (original behavior)
+        for i, (delay_ns, power) in enumerate(zip(delays_ns, powers_linear)):
+            tap_idx = int(delay_ns * 1e-9 * 1e6 * channel_length)
+            if tap_idx < channel_length:
+                h[:, tap_idx] = np.sqrt(power / 2) * (
+                    np.random.randn(num_samples) + 1j * np.random.randn(num_samples)
+                ).real
 
     # Normalize
     h = h / (np.linalg.norm(h, axis=1, keepdims=True) + 1e-10)
@@ -969,8 +984,9 @@ def exp_depth_sweep(save_dir, device, seeds=5, num_test=200):
 # ============================================================
 
 def generate_itu_training_data(num_samples, channel_length, model_type, pilot_length, snr_db):
-    """Generate training data from ITU channel models."""
-    h = generate_itu_channel(channel_length, model=model_type, num_samples=num_samples)
+    """Generate training data from ITU channel models with random tap positions."""
+    h = generate_itu_channel(channel_length, model=model_type, num_samples=num_samples,
+                             randomize_positions=True)
     # BPSK pilots
     x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
     # Convolve: d = x * h + noise
@@ -1050,8 +1066,9 @@ def exp_itu_training(save_dir, device, seeds=5, num_test=200):
             )
             model.eval()
 
-            # Test on same ITU channel model
-            h_test = generate_itu_channel(N, model=model_type, num_samples=num_test)
+            # Test on same ITU channel model (random positions)
+            h_test = generate_itu_channel(N, model=model_type, num_samples=num_test,
+                                          randomize_positions=True)
             x_test = torch.randint(0, 2, (num_test, pilot)).float() * 2 - 1
             d_list = []
             for i in range(num_test):
