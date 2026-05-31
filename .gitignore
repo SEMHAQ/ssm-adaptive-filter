@@ -79,9 +79,8 @@ desktop.ini
 
 # Compiled / output
 *.pdf
-!figures/*.pdf
+!paper/figures
 *.png
-!figures/*.png
 *.jpg
 *.jpeg
 *.svg

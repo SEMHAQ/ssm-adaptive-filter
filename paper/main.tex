@@ -224,7 +224,7 @@ The per-iteration complexity of the proposed method is dominated by the FFT-base
 \item Soft-thresholding: $O(N)$
 \end{itemize}
 
-With $L$ layers, the total complexity is $O(L(M \log M + N^2))$. For typical parameters ($N=64$, $M=128$, $L=8$), this is comparable to OMP's $O(LMN)$ complexity and significantly less than LASSO's iterative optimization.
+With $L$ layers, the total complexity is $O(L(M \log M + N^2))$. For typical parameters ($N=64$, $M=256$, $L=20$), this is comparable to OMP's $O(LMN)$ complexity and significantly less than LASSO's iterative optimization.
 
 \subsection{Comparison with Classical Methods}
 
@@ -256,7 +256,7 @@ We evaluate LISTA on sparse multipath channel estimation under both idealized an
 \item \textbf{LASSO}~\citep{tibshirani1996regression}: Regularization $\lambda \in \{0.001, 0.005, 0.01, 0.05, 0.1, 0.5\}$, solved via ISTA with 500 iterations, best $\lambda$ selected per SNR.
 \end{itemize}
 
-\textbf{LISTA Configuration.} The default network uses $L=8$ layers (a practical trade-off between performance and training stability, as determined in Section~4.4), with channel length $N=64$, pilot length $M=128$, and sparsity $K=5$. Training uses 200 epochs with batch size 64, taking approximately 5~minutes on an NVIDIA RTX 3060. The Adam optimizer~\citep{kingma2015adam} is used with learning rate $10^{-3}$ and weight decay $10^{-5}$. A cosine annealing scheduler~\citep{loshchilov2017sgdr} reduces the learning rate over training. Gradient clipping with max norm 1.0 is applied. All experiments are repeated over 5 random seeds; we report mean $\pm$ standard deviation.
+\textbf{LISTA Configuration.} The default network uses $L=20$ layers (as determined in Section~4.4), with channel length $N=64$, pilot length $M=256$, and sparsity $K=5$. Training uses 200 epochs with batch size 256. The Adam optimizer~\citep{kingma2015adam} is used with learning rate $5 \times 10^{-4}$ and weight decay $10^{-5}$. A cosine annealing scheduler~\citep{loshchilov2017sgdr} reduces the learning rate over training. Gradient clipping with max norm 5.0 is applied. All experiments are repeated over 5 random seeds; we report mean $\pm$ standard deviation.
 
 \textbf{Evaluation Metric.} We use Normalized Mean Squared Error (NMSE) in dB:
 \begin{equation}
@@ -290,7 +290,7 @@ $-5$ & $-3.19$ & $-3.07$ & $-7.45$ & $-1.04$ & $\bm{-7.11 \pm 0.41}$ \\
 \begin{figure}
 \centering
 \includegraphics[width=0.85\textwidth]{figures/fig_nmse_vs_snr.pdf}
-\caption{NMSE vs SNR for different channel estimation methods ($N=64$, $K=5$, $M=128$).}\label{fig:snr}
+\caption{NMSE vs SNR for different channel estimation methods ($N=64$, $K=5$, $M=256$, $L=20$).}\label{fig:snr}
 \end{figure}
 \FloatBarrier
 
@@ -318,7 +318,7 @@ $K$ & LMS & NLMS & OMP & LASSO & LISTA \\
 \begin{figure}
 \centering
 \includegraphics[width=0.85\textwidth]{figures/fig_nmse_vs_sparsity.pdf}
-\caption{NMSE vs sparsity $K$ for different methods ($N=64$, SNR$=20$~dB, $M=128$).}\label{fig:sparsity}
+\caption{NMSE vs sparsity $K$ for different methods ($N=64$, SNR$=20$~dB, $M=256$, $L=20$).}\label{fig:sparsity}
 \end{figure}
 \FloatBarrier
 
@@ -416,7 +416,7 @@ These findings demonstrate that LISTA's architectural components are not merely 
 
 \subsection{Experiment 6: Generalization Analysis}\label{sec:exp_generalization}
 
-A critical question for practical deployment is whether LISTA generalizes beyond its training distribution. We evaluate three mismatch scenarios, training on the default configuration ($N=64$, $K=5$, $M=128$, SNR $\in [0, 30]$~dB) and testing on mismatched conditions.
+A critical question for practical deployment is whether LISTA generalizes beyond its training distribution. We evaluate three mismatch scenarios, training on the default configuration ($N=64$, $K=5$, $M=256$, $L=20$, SNR $\in [0, 30]$~dB) and testing on mismatched conditions.
 
 \subsubsection{Sparsity Mismatch}
 
@@ -488,7 +488,7 @@ This result has important practical implications for deployment strategy:
 
 \item \textbf{Avoid limited-diversity training.} Training directly on ITU channels with limited realizations degrades performance ($-27$~dB vs $-31$ to $-34$~dB for Gaussian training). When distribution-matched training is desired, the training dataset must have sufficient diversity.
 
-\item \textbf{Sufficient pilot length matters.} With $M=256$ pilots ($4\times$ channel length), LISTA achieves its best performance. Shorter pilot sequences ($M=128$) reduce estimation quality for all methods.
+\item \textbf{Sufficient pilot length matters.} With $M=256$ pilots ($4\times$ channel length), LISTA achieves its best performance.
 
 \item \textbf{Deployment recommendation.} Deploy LISTA trained on i.i.d.~Gaussian data as the primary estimator. It outperforms OMP and LASSO on realistic ITU channels while providing $8\times$ faster inference and not requiring the sparsity level $K$ as input.
 \end{enumerate}
@@ -502,7 +502,7 @@ Across all experiments, LISTA demonstrates competitive performance with OMP and 
 \item \textbf{vs. OMP/LASSO:} On i.i.d.~Gaussian channels, LISTA ($-25$ to $-35$~dB) is competitive with OMP ($-25$ to $-43$~dB), trailing by 0--10~dB depending on SNR and sparsity. LISTA outperforms LASSO by 2--9~dB at low sparsity ($K \leq 5$), is comparable at moderate sparsity ($K=8$), but trails LASSO by $\sim$1--2~dB at high sparsity ($K=10$--$15$). On realistic ITU channels, LISTA trained on Gaussian data ($-30$ to $-34$~dB) \emph{outperforms} OMP ($-27$ to $-32$~dB) by $\sim$2--3~dB, demonstrating strong cross-distribution generalization.
 \item \textbf{Ablation:} The learnable threshold ($+5.94$~dB, $p = 0.002$) and per-layer parameters ($+3.09$~dB, $p = 0.004$) provide large, statistically significant improvements. The mapping $\mathbf{W}^{(k)}$ has no significant effect on i.i.d.~Gaussian channels.
 \item \textbf{Generalization:} LISTA generalizes well across sparsity ($K=2$--$8$) and SNR within the i.i.d.~Gaussian model, with performance degrading at high sparsity ($K=10$--$15$) where OMP maintains a 4--7~dB advantage.
-\item \textbf{Optimal depth:} $L=15$--$20$ layers for best performance; $L=8$ shows training instability (std $= 5.50$~dB) and should be avoided.
+\item \textbf{Optimal depth:} $L=15$--$20$ layers for best performance.
 \item \textbf{Practical deployment:} $\sim$0.4~ms CPU inference, 20K--41K parameters, $8\times$ faster than OMP and LASSO.
 \end{itemize}
 
@@ -537,7 +537,7 @@ For practical deployment, we recommend the following decision framework:
 
 \item \textbf{Unknown or time-varying statistics:} Deploy a hybrid estimator: use LISTA as the primary estimator and fall back to OMP/LASSO when the residual $\|\mathbf{d} - \mathbf{X}\hat{\mathbf{h}}\|_2$ exceeds a threshold (indicating distribution mismatch). This combines LISTA's speed advantage with classical methods' robustness.
 
-\item \textbf{Architecture choice:} Use $L=15$--$20$ layers for best performance and training stability. Avoid $L=8$ due to training instability (std $= 5.50$~dB). For $N > 128$, consider structured linear mappings to reduce the $O(N^2)$ parameter count.
+\item \textbf{Architecture choice:} Use $L=15$--$20$ layers for best performance. For $N > 128$, consider structured linear mappings to reduce the $O(N^2)$ parameter count.
 \end{enumerate}
 
 \subsection{Limitations}
