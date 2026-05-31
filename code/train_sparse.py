@@ -31,8 +31,8 @@ def compute_nmse_db(h_est: torch.Tensor, h_true: torch.Tensor) -> float:
 def train_lista(
     channel_length: int = 64,
     sparsity: int = 5,
-    num_layers: int = 10,
-    pilot_length: int = 128,
+    num_layers: int = 20,
+    pilot_length: int = 256,
     snr_db: float = 20.0,
     epochs: int = 200,
     batch_size: int = 64,
@@ -210,8 +210,8 @@ def main():
     parser = argparse.ArgumentParser(description='Train LISTA for sparse channel estimation')
     parser.add_argument('--channel_length', type=int, default=64)
     parser.add_argument('--sparsity', type=int, default=5)
-    parser.add_argument('--num_layers', type=int, default=10)
-    parser.add_argument('--pilot_length', type=int, default=128)
+    parser.add_argument('--num_layers', type=int, default=20)
+    parser.add_argument('--pilot_length', type=int, default=256)
     parser.add_argument('--snr_db', type=float, default=20.0)
     parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--batch_size', type=int, default=64)

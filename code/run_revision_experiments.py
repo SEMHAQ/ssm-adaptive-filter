@@ -340,7 +340,7 @@ def exp_ablation(save_dir, device, seeds=5, num_test=200):
     print("ABLATION STUDY")
     print("=" * 60)
 
-    N, K, L, pilot, snr = 64, 5, 8, 128, 20
+    N, K, L, pilot, snr = 64, 5, 20, 256, 20
     configs = {
         'Full LISTA': lambda: LISTA(N, L),
         'No W (identity)': lambda: LISTANoW(N, L),
@@ -497,7 +497,7 @@ def exp_generalization_snr(save_dir, device, seeds=5, num_test=200):
     print("GENERALIZATION: SNR MISMATCH")
     print("=" * 60)
 
-    N, K, L, pilot = 64, 5, 8, 128
+    N, K, L, pilot = 64, 5, 20, 256
     train_snr_range = (0, 30)
     test_snr_values = [-5, 0, 5, 10, 15, 20, 25, 30, 40]
 
@@ -608,7 +608,7 @@ def exp_runtime(save_dir, device, num_test=200):
     print("RUNTIME COMPARISON")
     print("=" * 60)
 
-    N, K, L, pilot, snr = 64, 5, 8, 128, 20
+    N, K, L, pilot, snr = 64, 5, 20, 256, 20
 
     # Generate test data
     x_test, d_test, h_test = generate_sparse_channel_data(
@@ -822,16 +822,15 @@ def exp_channel_length(save_dir, device, seeds=5, num_test=200):
     print("=" * 60)
 
     N_values = [32, 64, 128, 256]
-    pilot_ratio = 2  # M/N = 2
+    pilot = 256  # Fixed pilot length
     sparsity_ratio = 0.08  # K/N ≈ 8%
     snr = 20
-    L = 8
+    L = 20
 
     all_results = {}
 
     for N in N_values:
         K = max(2, int(N * sparsity_ratio))
-        pilot = N * pilot_ratio
         print(f"\n=== N={N}, K={K}, M={pilot} ===")
 
         seed_results = {name: [] for name in ['LMS', 'NLMS', 'OMP', 'LASSO', 'LISTA']}
@@ -897,7 +896,7 @@ def exp_depth_sweep(save_dir, device, seeds=5, num_test=200):
     print("DEPTH SWEEP EXPERIMENT")
     print("=" * 60)
 
-    N, K, pilot, snr = 64, 5, 128, 20
+    N, K, pilot, snr = 64, 5, 256, 20
     layer_list = [1, 2, 3, 5, 8, 10, 15, 20]
 
     all_results = {}

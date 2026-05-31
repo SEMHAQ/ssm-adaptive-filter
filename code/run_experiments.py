@@ -159,7 +159,7 @@ def exp_snr(save_dir, device, num_test=100):
     """Experiment 1: NMSE vs SNR."""
     print("\n=== Experiment 1: NMSE vs SNR ===")
     snr_values = [0, 5, 10, 15, 20, 25, 30]
-    N, K, L, pilot = 64, 5, 10, 128
+    N, K, L, pilot = 64, 5, 20, 256
 
     all_results = {}
     for snr in snr_values:
@@ -198,7 +198,7 @@ def exp_sparsity(save_dir, device, num_test=100):
     """Experiment 2: NMSE vs Sparsity."""
     print("\n=== Experiment 2: NMSE vs Sparsity ===")
     sparsity_values = [2, 4, 6, 8, 10, 12, 15]
-    N, L, pilot, snr = 64, 10, 128, 20
+    N, L, pilot, snr = 64, 20, 256, 20
 
     all_results = {}
     for K in sparsity_values:
@@ -236,12 +236,11 @@ def exp_channel_length(save_dir, device, num_test=100):
     print("\n=== Experiment 3: NMSE vs Channel Length ===")
     N_values = [32, 64, 128, 256]
     K_ratio = 0.08  # ~8% sparsity
-    L, pilot_ratio, snr = 10, 2, 20
+    L, pilot, snr = 20, 256, 20
 
     all_results = {}
     for N in N_values:
         K = max(2, int(N * K_ratio))
-        pilot = N * pilot_ratio
         print(f"\nN = {N}, K = {K}, pilot = {pilot}")
         res = run_single_experiment(N, K, pilot, snr, L, num_test, device)
         all_results[N] = res
@@ -275,7 +274,7 @@ def exp_convergence(save_dir, device, num_test=100):
     """Experiment 4: NMSE vs Number of LISTA Layers."""
     print("\n=== Experiment 4: LISTA Convergence ===")
     layer_values = [1, 2, 3, 5, 8, 10, 15, 20]
-    N, K, pilot, snr = 64, 5, 128, 20
+    N, K, pilot, snr = 64, 5, 256, 20
 
     # Generate test data
     torch.manual_seed(42)
