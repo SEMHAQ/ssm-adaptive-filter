@@ -110,6 +110,33 @@ def generate_itu_channel(channel_length, model='peda', num_samples=1000,
 # Ablation LISTA variants
 # ============================================================
 
+def _build_conv_matrix(x, channel_length):
+    """Build batched Toeplitz convolution matrix A: A[i,j] = x[i-j]."""
+    B, M = x.shape
+    N = channel_length
+    A = torch.zeros(B, M, N, device=x.device)
+    for j in range(N):
+        A[:, j:, j] = x[:, :M - j]
+    return A
+
+
+def _lista_forward_base(x, d, channel_length, layers):
+    """Shared forward pass for all LISTA variants using Toeplitz matrix."""
+    batch = x.shape[0]
+    device = x.device
+    pilot_len = x.shape[1]
+    A = _build_conv_matrix(x, channel_length)
+    h = torch.zeros(batch, channel_length, device=device)
+    for layer in layers:
+        d_recon = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
+        residual = (d_recon - d).unsqueeze(-1)
+        grad = torch.bmm(A.transpose(1, 2), residual).squeeze(-1) / pilot_len
+        h = layer(h, grad)
+    d_recon_final = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
+    e = d - d_recon_final
+    return h, d_recon_final, e
+
+
 class LISTANoW(nn.Module):
     """LISTA without learnable W (identity mapping)."""
     def __init__(self, channel_length, num_layers=8):
@@ -121,30 +148,12 @@ class LISTANoW(nn.Module):
         ])
 
     def forward(self, x, d):
-        batch = x.shape[0]
-        device = x.device
-        pilot_len = x.shape[1]
-        fft_len = pilot_len + self.channel_length - 1
-        X_fft = torch.fft.rfft(x, n=fft_len)
-        h = torch.zeros(batch, self.channel_length, device=device)
-        for layer in self.layers:
-            H_fft = torch.fft.rfft(h, n=fft_len)
-            d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
-            d_recon = d_recon_full[:, :pilot_len]
-            residual = d_recon - d
-            residual_padded = torch.nn.functional.pad(residual, (self.channel_length - 1, 0))
-            R_fft = torch.fft.rfft(residual_padded, n=fft_len)
-            grad_full = torch.fft.irfft(torch.conj(X_fft) * R_fft, n=fft_len)
-            grad = grad_full[:, :self.channel_length] / pilot_len
-            h = layer(h, grad)
-        d_recon_final = torch.fft.irfft(X_fft * torch.fft.rfft(h, n=fft_len), n=fft_len)[:, :pilot_len]
-        e = d - d_recon_final
-        return h, d_recon_final, e
+        return _lista_forward_base(x, d, self.channel_length, self.layers)
 
 
 class LISTALayerNoW(nn.Module):
     """LISTA layer without W (identity mapping)."""
-    def __init__(self, channel_length, init_step=0.1, init_threshold=0.1):
+    def __init__(self, channel_length, init_step=0.1, init_threshold=0.01):
         super().__init__()
         self.step = nn.Parameter(torch.tensor(init_step))
         self.threshold = nn.Parameter(torch.tensor(init_threshold))
@@ -156,7 +165,7 @@ class LISTALayerNoW(nn.Module):
 
 class LISTAFixedThreshold(nn.Module):
     """LISTA with fixed threshold (not learnable)."""
-    def __init__(self, channel_length, num_layers=8, fixed_threshold=0.1):
+    def __init__(self, channel_length, num_layers=8, fixed_threshold=0.01):
         super().__init__()
         self.channel_length = channel_length
         self.num_layers = num_layers
@@ -166,30 +175,12 @@ class LISTAFixedThreshold(nn.Module):
         ])
 
     def forward(self, x, d):
-        batch = x.shape[0]
-        device = x.device
-        pilot_len = x.shape[1]
-        fft_len = pilot_len + self.channel_length - 1
-        X_fft = torch.fft.rfft(x, n=fft_len)
-        h = torch.zeros(batch, self.channel_length, device=device)
-        for layer in self.layers:
-            H_fft = torch.fft.rfft(h, n=fft_len)
-            d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
-            d_recon = d_recon_full[:, :pilot_len]
-            residual = d_recon - d
-            residual_padded = torch.nn.functional.pad(residual, (self.channel_length - 1, 0))
-            R_fft = torch.fft.rfft(residual_padded, n=fft_len)
-            grad_full = torch.fft.irfft(torch.conj(X_fft) * R_fft, n=fft_len)
-            grad = grad_full[:, :self.channel_length] / pilot_len
-            h = layer(h, grad)
-        d_recon_final = torch.fft.irfft(X_fft * torch.fft.rfft(h, n=fft_len), n=fft_len)[:, :pilot_len]
-        e = d - d_recon_final
-        return h, d_recon_final, e
+        return _lista_forward_base(x, d, self.channel_length, self.layers)
 
 
 class LISTALayerFixedThresh(nn.Module):
     """LISTA layer with fixed threshold."""
-    def __init__(self, channel_length, fixed_threshold=0.1, init_step=0.1):
+    def __init__(self, channel_length, fixed_threshold=0.01, init_step=0.1):
         super().__init__()
         self.step = nn.Parameter(torch.tensor(init_step))
         self.fixed_threshold = fixed_threshold
@@ -208,7 +199,7 @@ class LISTASharedParams(nn.Module):
         self.channel_length = channel_length
         self.num_layers = num_layers
         self.step = nn.Parameter(torch.tensor(0.1))
-        self.threshold = nn.Parameter(torch.tensor(0.1))
+        self.threshold = nn.Parameter(torch.tensor(0.01))
         self.W_layers = nn.ModuleList([
             nn.Linear(channel_length, channel_length, bias=False) for _ in range(num_layers)
         ])
@@ -219,21 +210,15 @@ class LISTASharedParams(nn.Module):
         batch = x.shape[0]
         device = x.device
         pilot_len = x.shape[1]
-        fft_len = pilot_len + self.channel_length - 1
-        X_fft = torch.fft.rfft(x, n=fft_len)
+        A = _build_conv_matrix(x, self.channel_length)
         h = torch.zeros(batch, self.channel_length, device=device)
         for W in self.W_layers:
-            H_fft = torch.fft.rfft(h, n=fft_len)
-            d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
-            d_recon = d_recon_full[:, :pilot_len]
-            residual = d_recon - d
-            residual_padded = torch.nn.functional.pad(residual, (self.channel_length - 1, 0))
-            R_fft = torch.fft.rfft(residual_padded, n=fft_len)
-            grad_full = torch.fft.irfft(torch.conj(X_fft) * R_fft, n=fft_len)
-            grad = grad_full[:, :self.channel_length] / pilot_len
+            d_recon = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
+            residual = (d_recon - d).unsqueeze(-1)
+            grad = torch.bmm(A.transpose(1, 2), residual).squeeze(-1) / pilot_len
             h_new = W(h) - self.step * grad
             h = torch.sign(h_new) * torch.relu(torch.abs(h_new) - self.threshold)
-        d_recon_final = torch.fft.irfft(X_fft * torch.fft.rfft(h, n=fft_len), n=fft_len)[:, :pilot_len]
+        d_recon_final = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
         e = d - d_recon_final
         return h, d_recon_final, e
 
@@ -246,7 +231,7 @@ def train_model(model, channel_length, sparsity, pilot_length, snr_db,
                 epochs=200, batch_size=64, device='cpu'):
     """Generic training loop for any LISTA variant."""
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     for epoch in range(epochs):
@@ -265,7 +250,7 @@ def train_model(model, channel_length, sparsity, pilot_length, snr_db,
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
         optimizer.step()
         scheduler.step()
 
@@ -545,7 +530,7 @@ def exp_generalization_snr(save_dir, device, seeds=5, num_test=200):
                 continue
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             scheduler.step()
 
@@ -991,13 +976,13 @@ def generate_itu_training_data(num_samples, channel_length, model_type, pilot_le
                              randomize_positions=True, normalize=False)
     # BPSK pilots
     x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
-    # Convolve: d = x * h + noise
+    # Convolve: d = x * h + noise (flip h for true convolution)
     d = torch.zeros(num_samples, pilot_length)
     for i in range(num_samples):
         x_i = x[i].unsqueeze(0).unsqueeze(0)
         h_i = h[i].unsqueeze(0).unsqueeze(0)
         d[i] = torch.nn.functional.conv1d(
-            x_i, h_i, padding=channel_length - 1
+            x_i, torch.flip(h_i, [2]), padding=channel_length - 1
         ).squeeze()[:pilot_length]
     # Add noise
     sig_power = torch.mean(d ** 2)
@@ -1011,7 +996,7 @@ def train_model_itu(model, channel_length, model_type, pilot_length, snr_db,
                     epochs=200, batch_size=64, device='cpu'):
     """Train LISTA on ITU channel data."""
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     for epoch in range(epochs):
@@ -1030,7 +1015,7 @@ def train_model_itu(model, channel_length, model_type, pilot_length, snr_db,
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
         optimizer.step()
         scheduler.step()
 

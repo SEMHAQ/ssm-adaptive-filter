@@ -542,12 +542,14 @@ def generate_sparse_channel_data(
     x = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
 
     # Convolve: d = x * h + noise
+    # Note: torch.conv1d does cross-correlation, not convolution.
+    # Flip h to get true convolution: y[n] = sum_k x[n-k]*h[k]
     d = torch.zeros(num_samples, pilot_length)
     for i in range(num_samples):
         x_i = x[i].unsqueeze(0).unsqueeze(0)
         h_i = h[i].unsqueeze(0).unsqueeze(0)
         d[i] = torch.nn.functional.conv1d(
-            x_i, h_i, padding=channel_length - 1
+            x_i, torch.flip(h_i, [2]), padding=channel_length - 1
         ).squeeze()[:pilot_length]
 
     # Add noise

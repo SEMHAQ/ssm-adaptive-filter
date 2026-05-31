@@ -595,10 +595,22 @@ class LISTA(nn.Module):
         self.num_layers = num_layers
 
         # LISTA layers
+        # Gradient magnitude at init is ~0.1 (mean abs).
+        # We need step * grad > threshold for gradient to flow.
+        # init_step=1.0, init_threshold=0.001 gives step*grad ≈ 0.1 >> 0.001.
         self.layers = nn.ModuleList([
-            LISTALayer(channel_length, init_step=0.1, init_threshold=0.1)
+            LISTALayer(channel_length, init_step=1.0, init_threshold=0.001)
             for _ in range(num_layers)
         ])
+
+    def _build_toeplitz(self, x):
+        """Build batched Toeplitz convolution matrix A: A[i,j] = x[i-j]."""
+        B, M = x.shape
+        N = self.channel_length
+        A = torch.zeros(B, M, N, device=x.device)
+        for j in range(N):
+            A[:, j:, j] = x[:, :M - j]
+        return A
 
     def forward(self, x, d, num_steps=None):
         """
@@ -612,44 +624,27 @@ class LISTA(nn.Module):
         """
         batch = x.shape[0]
         device = x.device
-
-        # Build convolution matrix A (Toeplitz structure)
-        # A @ h = x * h (convolution)
-        # For efficiency, use FFT-based convolution
         pilot_len = x.shape[1]
-        fft_len = pilot_len + self.channel_length - 1
 
-        # FFT of pilot signal
-        X_fft = torch.fft.rfft(x, n=fft_len)
+        # Build Toeplitz matrix for each sample
+        A = self._build_toeplitz(x)  # (B, M, N)
 
         # Initialize h estimate
         h = torch.zeros(batch, self.channel_length, device=device)
 
         for layer in self.layers:
-            # Compute d_recon = x * h (convolution via FFT)
-            H_fft = torch.fft.rfft(h, n=fft_len)
-            d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
-            d_recon = d_recon_full[:, :pilot_len]
+            # Forward: d_recon = A @ h
+            d_recon = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)  # (B, M)
 
-            # Gradient: grad = X^T(Xh - d) = x * (d_recon - d) (correlation)
-            residual = d_recon - d
-            residual_padded = torch.nn.functional.pad(
-                residual, (self.channel_length - 1, 0)
-            )
-            # Correlation via FFT
-            R_fft = torch.fft.rfft(residual_padded, n=fft_len)
-            grad_full = torch.fft.irfft(
-                torch.conj(X_fft) * R_fft, n=fft_len
-            )
-            grad = grad_full[:, :self.channel_length] / pilot_len
+            # Gradient: grad = A^T(Ah - d) / M
+            residual = (d_recon - d).unsqueeze(-1)  # (B, M, 1)
+            grad = torch.bmm(A.transpose(1, 2), residual).squeeze(-1) / pilot_len  # (B, N)
 
             # LISTA update
             h = layer(h, grad)
 
         # Final reconstruction
-        H_fft = torch.fft.rfft(h, n=fft_len)
-        d_recon_full = torch.fft.irfft(X_fft * H_fft, n=fft_len)
-        d_recon = d_recon_full[:, :pilot_len]
+        d_recon = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
         e = d - d_recon
 
         return h, d_recon, e
