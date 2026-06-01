@@ -33,7 +33,7 @@
 \shortauthors{H. Yu}
 
 % Main title of the paper
-\title [mode = title]{Error concentration in deep-unfolded LISTA: Mechanism, ablation, and deployment guidance for sparse channel estimation}
+\title [mode = title]{On the error concentration behavior of deep-unfolded LISTA in sparse channel estimation}
 
 % First author
 \author[1]{Huanjie Yu}[orcid=0009-0008-9824-1801]
@@ -1165,7 +1165,7 @@ Complex OMP   & $93.4 \pm 0.8$ & $6.62 \pm 0.75$ & --- \\
 \end{tabular*}
 \end{table}
 
-\section{Cross-Table Consistency}\label{sec:supp_cross_table}
+\section{Supplementary Experimental Results}\label{sec:supp_experiments}
 
 \begin{table}[width=.7\linewidth,cols=3,pos=!htbp]
 \caption{LISTA NMSE (dB) sensitivity to training distribution at the shared configuration ($N=64$, $K=5$, $M=256$, $L=20$, SNR$=20$~dB). The $\sim$8~dB difference reflects the training protocol, not random variation.}\label{tab:cross_table}
@@ -1186,7 +1186,7 @@ Difference & $\mathbf{8.04}$ & $0.44$ \\
 %% S2: Network Depth Analysis
 %% ============================================================
 
-\section{Network Depth Analysis}\label{sec:supp_convergence}
+\subsection{Network Depth Analysis}\label{sec:supp_convergence}
 
 \begin{table}[width=.7\linewidth,cols=3,pos=!htbp]
 \caption{LISTA NMSE (dB) vs number of layers, with OMP baseline ($N=64$, $K=5$, $M=256$, SNR$=20$~dB). Mean $\pm$ std over 5 seeds.}\label{tab:convergence}
@@ -1213,7 +1213,7 @@ Layers & Mean (dB) & Std (dB) \\
 %% S3: Inference Time
 %% ============================================================
 
-\section{Inference Time Comparison}\label{sec:supp_runtime}
+\subsection{Inference Time Comparison}\label{sec:supp_runtime}
 
 \begin{table}[width=.9\linewidth,cols=4,pos=!htbp]
 \caption{Python inference time (ms per channel estimate, $N=64$, $M=256$, single CPU core). The time difference reflects software implementation overhead, not algorithmic efficiency; LISTA requires $2.3\times$ more FLOPs than OMP.}\label{tab:runtime}
@@ -1237,7 +1237,7 @@ LISTA ($L=20$) & 0.21   & $760$   & 81,960  \\
 %% S4: ITU Channel Results
 %% ============================================================
 
-\section{ITU Channel Model Results}\label{sec:supp_itu}
+\subsection{ITU Channel Model Results}\label{sec:supp_itu}
 
 \begin{table}[width=.9\linewidth,cols=6,pos=!htbp]
 \caption{NMSE (dB) on ITU channel models (SNR$=20$~dB, $M=256$, $L=20$). LISTA trained on i.i.d.~Gaussian data with mixed SNR. Mean $\pm$ std over 5 seeds.}\label{tab:itu}
@@ -1256,7 +1256,7 @@ ITU VehA & $-15.87$ & $-18.51$ & $\bm{-31.85}$ & $-27.64$ & $-26.49 \pm 0.19$ \\
 %% S5: LISTA-CP Comparison
 %% ============================================================
 
-\section{LISTA-CP Comparison}\label{sec:supp_lista_cp}
+\subsection{LISTA-CP Comparison}\label{sec:supp_lista_cp}
 
 \begin{table}[width=.9\linewidth,cols=5,pos=!htbp]
 \caption{LISTA vs LISTA-CP: NMSE (dB) across SNR levels ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. $p$: paired $t$-test.}\label{tab:lista_cp}
@@ -1277,7 +1277,7 @@ SNR (dB) & OMP & LASSO & LISTA & LISTA-CP & $p$ \\
 %% S6: SNR Mitigation
 %% ============================================================
 
-\section{SNR Saturation Mitigation}\label{sec:supp_snr_mitigation}
+\subsection{SNR Saturation Mitigation}\label{sec:supp_snr_mitigation}
 
 \begin{table}[width=.9\linewidth,cols=3,pos=!htbp]
 \caption{SNR saturation mitigation: NMSE (dB) at test SNR$=20$~dB with different training SNR ranges ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds.}\label{tab:snr_mitigation}
@@ -1298,7 +1298,7 @@ $[20, 30]$           & $-31.14 \pm 1.62$ & $-37.53$ \\
 %% S7: CNN Baseline
 %% ============================================================
 
-\section{CNN Baseline Comparison}\label{sec:supp_cnn}
+\subsection{CNN Baseline Comparison}\label{sec:supp_cnn}
 
 \begin{table}[width=.9\linewidth,cols=6,pos=!htbp]
 \caption{NMSE (dB) comparison including CNN baseline ($N=64$, $K=5$, $M=256$, $L=20$). CNN: 4-layer 1D CNN with 80K parameters. Mean $\pm$ std over 5 seeds.}\label{tab:cnn_baseline}
@@ -1320,7 +1320,9 @@ $30$  & $\bm{-48.51}$ & $-43.12$ & $-25.15 \pm 0.61$ & $-25.02 \pm 0.79$ & $-0.1
 %% S8: ZF vs MMSE BER
 %% ============================================================
 
-\section{ZF vs MMSE BER Comparison}\label{sec:supp_ber_zf}
+\section{BER Analysis}\label{sec:supp_ber}
+
+\subsection{ZF vs MMSE BER Comparison}\label{sec:supp_ber_zf}
 
 \begin{table}[width=.9\linewidth,cols=6,pos=!htbp]
 \caption{QPSK BER comparison: ZF vs.~MMSE equalization ($N=64$, $K=5$, $M=256$, $L=20$). Mean over 5 seeds, 200 realizations per point.}\label{tab:ber_mmse_zf}
@@ -1346,7 +1348,9 @@ $30$ & $0.0003$ & $\bm{0.0003}$ & 0.10 & $\bm{0.001}$ & $0.001$ & 0.13 \\
 %% S9: ISTA Control Error Sparsity
 %% ============================================================
 
-\section{ISTA Control Error Sparsity}\label{sec:supp_ista_control}
+\section{Error Concentration Details}\label{sec:supp_error}
+
+\subsection{ISTA Control Error Sparsity}\label{sec:supp_ista_control}
 
 \begin{table}[width=.9\linewidth,cols=5,pos=!htbp]
 \caption{Error sparsity comparison: LISTA vs.~OMP vs.~standard ISTA at SNR$=20$~dB ($N=64$, $K=5$, $M=256$, $L=20$). ISTA uses grid-searched threshold with 20 iterations. Mean $\pm$ std over 5 seeds.}\label{tab:error_sparsity_ista}
@@ -1367,7 +1371,7 @@ ISTA    & $92.4 \pm 0.4$ & $7.58 \pm 0.39$ & $0.915 \pm 0.001$ & $-30.59 \pm 0.1
 %% S10: Learned Thresholds
 %% ============================================================
 
-\section{Learned Threshold Values}\label{sec:supp_thresholds}
+\subsection{Learned Threshold Values}\label{sec:supp_thresholds}
 
 \begin{table}[width=.85\linewidth,cols=3,pos=!htbp]
 \caption{Learned threshold values $\theta^{(k)}$ and step sizes $\mu^{(k)}$ per layer (mean $\pm$ std over 20 seeds, $N=64$, $K=5$, $M=256$, $L=20$).}\label{tab:learned_thresholds}
@@ -1390,7 +1394,7 @@ Layer $k$ & $\theta^{(k)}$ & $\mu^{(k)}$ \\
 %% S11: Extended Error Sparsity
 %% ============================================================
 
-\section{Extended Error Sparsity Analysis}\label{sec:supp_sparsity_extended}
+\subsection{Extended Error Sparsity Analysis}\label{sec:supp_sparsity_extended}
 
 \begin{table}[width=.9\linewidth,cols=6,pos=!htbp]
 \caption{Error sparsity analysis across sparsity levels at SNR$=20$~dB ($N=64$, $M=256$, $L=20$). LISTA trained with $K=5$; $K=10$ tests generalization to higher sparsity. Mean $\pm$ std over 5 seeds.}\label{tab:error_sparsity_extended}
@@ -1416,7 +1420,7 @@ $K$ & Method & Error on $S$ (\%) & Error on $\bar{S}$ (\%) & Gini & NMSE (dB) \\
 %% S12: FISTA Comparison
 %% ============================================================
 
-\section{FISTA Comparison}\label{sec:supp_fista}
+\subsection{FISTA Comparison}\label{sec:supp_fista}
 
 \begin{table}[width=.9\linewidth,cols=6,pos=!htbp]
 \caption{NMSE (dB) comparison including FISTA baseline ($N=64$, $K=5$, $M=256$, $L=20$). FISTA uses Nesterov momentum with 20 iterations and grid-searched threshold. Mean $\pm$ std over 5 seeds.}\label{tab:fista_comparison}
@@ -1443,7 +1447,7 @@ $40$  & $\bm{-58.04}$ & $-50.88$ & $-52.45 \pm 0.48$ & $-25.02 \pm 0.57$ & $-27.
 %% S13: Noise Enhancement
 %% ============================================================
 
-\section{Equalizer Noise Enhancement}\label{sec:supp_noise}
+\subsection{Equalizer Noise Enhancement}\label{sec:supp_noise}
 
 \begin{table}[width=.9\linewidth,cols=4,pos=!htbp]
 \caption{Equalizer noise enhancement factor (lower $=$ better) across SNR levels.}\label{tab:noise_enhancement}
@@ -1464,7 +1468,7 @@ $30$ & $25.3$ & $\bm{6.1}$ & $0.2\times$ \\
 %% S14: ITU Error Sparsity
 %% ============================================================
 
-\section{ITU Error Sparsity}\label{sec:supp_itu_error}
+\subsection{ITU Error Sparsity}\label{sec:supp_itu_error}
 
 \begin{table}[width=.9\linewidth,cols=5,pos=!htbp]
 \caption{Error sparsity analysis on ITU channel models at SNR$=20$~dB ($N=64$, $M=256$, $L=20$).}\label{tab:error_sparsity_itu}
