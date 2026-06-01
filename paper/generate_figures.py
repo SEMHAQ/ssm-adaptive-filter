@@ -196,7 +196,7 @@ def fig_nmse_vs_snr():
     ax.set_xlabel('SNR (dB)')
     ax.set_ylabel('NMSE (dB)')
     # Legend in upper-right — clean area, no lines to block
-    ax.legend(fontsize=7.5, ncol=2, loc='upper right')
+    ax.legend(fontsize=7.5, ncol=2, loc='lower left')
     ax.grid(alpha=0.25)
     ax.set_ylim([-62, 5])
 
@@ -232,7 +232,7 @@ def fig_nmse_vs_sparsity():
     ax.set_xlabel('Sparsity $K$')
     ax.set_ylabel('NMSE (dB)')
     ax.set_xticks(K)
-    ax.legend(fontsize=7.5, loc='upper right')
+    ax.legend(fontsize=7.5, loc='upper left')
     ax.grid(alpha=0.25)
 
     ax.annotate('Divergence\n(1/5 seeds)',
