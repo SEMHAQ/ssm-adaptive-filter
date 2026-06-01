@@ -1,6 +1,6 @@
 """
 Generate publication-quality figures for the LISTA channel estimation paper.
-Pure matplotlib. Fixed layout issues from v1.
+Pure matplotlib. v3 — fixed layout issues.
 
 Usage:
     cd paper
@@ -10,7 +10,6 @@ Usage:
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.patches import FancyArrowPatch
 import numpy as np
 import os
 
@@ -28,7 +27,7 @@ mpl.rcParams.update({
     "axes.linewidth": 0.8,
     "axes.labelsize": 10,
     "axes.titlesize": 11,
-    "legend.fontsize": 8,
+    "legend.fontsize": 7.5,
     "legend.frameon": True,
     "legend.facecolor": "white",
     "legend.edgecolor": "#cccccc",
@@ -63,90 +62,102 @@ def save_pub(fig, name):
     print(f"  ✓ {name}")
 
 
-def arrow(ax, x1, y1, x2, y2, color='#555', lw=1.2):
-    """Draw a consistent arrow between two points."""
+def arr(ax, x1, y1, x2, y2, color='#555', lw=1.2):
+    """Consistent arrow."""
     ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
                 arrowprops=dict(arrowstyle='->', color=color, lw=lw,
                                 shrinkA=2, shrinkB=2))
 
 
+def rbox(ax, x, y, w, h, fc, ec='#444', lw=0.8):
+    """Rounded box."""
+    r = mpatches.FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.06",
+                                 facecolor=fc, edgecolor=ec, linewidth=lw)
+    ax.add_patch(r)
+    return r
+
+
 # ============================================================
-# Figure 1: Architecture Diagram (v2 - clean arrows, proper spacing)
+# Figure 1: Architecture Diagram (v3 — perfectly aligned layers)
 # ============================================================
 def fig_architecture():
-    fig, ax = plt.subplots(figsize=(7.5, 3.0))
-    ax.set_xlim(-0.2, 11.0)
-    ax.set_ylim(-0.5, 2.8)
+    fig, ax = plt.subplots(figsize=(7.5, 2.8))
+    ax.set_xlim(0, 12)
+    ax.set_ylim(0, 3.0)
     ax.set_aspect('equal')
     ax.axis('off')
 
-    def rbox(x, y, w, h, fc, ec='#444', lw=0.8):
-        r = mpatches.FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.06",
-                                     facecolor=fc, edgecolor=ec, linewidth=lw)
-        ax.add_patch(r)
-        return r
+    # Fixed dimensions for all layers
+    LW, LH = 2.0, 2.2       # layer box width, height
+    BW, BH = 0.55, 0.45      # sub-component box width, height
+    GAP = 0.15               # gap between W and mu blocks
+
+    # Y positions (fixed for ALL layers)
+    LY = 0.3                  # layer box bottom
+    BY_TOP = 1.5              # W/mu block bottom (top row)
+    BY_BOT = 0.35             # S_theta block bottom (bottom row)
+    LABEL_Y = 2.25            # layer label Y
 
     # ---- Input ----
-    rbox(0.0, 0.4, 1.3, 1.6, C_LISTA, ec=C_LISTA, lw=1.0)
-    ax.text(0.65, 1.55, 'Input', ha='center', va='center',
+    rbox(ax, 0.2, 0.5, 1.2, 1.8, C_LISTA, ec=C_LISTA, lw=1.0)
+    ax.text(0.8, 1.75, 'Input', ha='center', va='center',
             fontsize=9, fontweight='bold', color='white')
-    ax.text(0.65, 0.95, r'$\mathbf{x},\ \mathbf{d}$', ha='center', va='center',
+    ax.text(0.8, 1.1, r'$\mathbf{x},\ \mathbf{d}$', ha='center', va='center',
             fontsize=9, color='white')
 
-    # Arrow: Input → Layer 1
-    arrow(ax, 1.35, 1.2, 1.8, 1.2)
+    arr(ax, 1.45, 1.4, 1.9, 1.4)
 
-    # ---- Layer blocks ----
-    # Layer 1, Layer 2, dots, Layer L
-    lx = [1.85, 4.05, 6.55, 8.45]
-    labels = ['Layer 1', 'Layer 2', 'dots', 'Layer $L$']
+    # ---- Layer positions ----
+    layer_x = [1.95, 4.15, 6.65, 8.55]
+    layer_labels = ['Layer 1', 'Layer 2', '...', 'Layer $L$']
 
-    for i, (x, lbl) in enumerate(zip(lx, labels)):
-        if lbl == 'dots':
-            # Three dots
+    for i, (lx, lbl) in enumerate(zip(layer_x, layer_labels)):
+        if lbl == '...':
             for dx in [-0.1, 0, 0.1]:
-                ax.plot(x + dx, 1.2, 'o', color='#aaa', markersize=3.5, zorder=5)
+                ax.plot(lx + dx, 1.4, 'o', color='#aaa', markersize=3.5, zorder=5)
             continue
 
-        # Outer layer box
-        rbox(x, 0.1, 1.9, 2.2, C_LIGHT, ec=C_LISTA, lw=0.6)
-        ax.text(x + 0.95, 2.05, lbl, ha='center', va='center',
+        # Outer box
+        rbox(ax, lx, LY, LW, LH, C_LIGHT, ec=C_LISTA, lw=0.6)
+
+        # Label at top
+        ax.text(lx + LW/2, LABEL_Y, lbl, ha='center', va='center',
                 fontsize=8, fontweight='bold', color=C_LISTA)
 
-        # W^(k) block
-        rbox(x + 0.08, 1.3, 0.6, 0.5, C_LISTA, ec=C_LISTA)
-        ax.text(x + 0.38, 1.55, r'$\mathbf{W}^{(k)}$', ha='center', va='center',
-                fontsize=6.5, fontweight='bold', color='white')
+        # W^(k) — left of top row
+        wx = lx + (LW - 2*BW - GAP) / 2
+        rbox(ax, wx, BY_TOP, BW, BH, C_LISTA, ec=C_LISTA)
+        ax.text(wx + BW/2, BY_TOP + BH/2, r'$\mathbf{W}^{(k)}$',
+                ha='center', va='center', fontsize=6.5, fontweight='bold', color='white')
 
-        # mu^(k) block
-        rbox(x + 0.75, 1.3, 0.6, 0.5, C_ORANGE, ec=C_ORANGE)
-        ax.text(x + 1.05, 1.55, r'$\mu^{(k)}$', ha='center', va='center',
-                fontsize=6.5, fontweight='bold', color='white')
+        # mu^(k) — right of top row
+        mx = wx + BW + GAP
+        rbox(ax, mx, BY_TOP, BW, BH, C_ORANGE, ec=C_ORANGE)
+        ax.text(mx + BW/2, BY_TOP + BH/2, r'$\mu^{(k)}$',
+                ha='center', va='center', fontsize=6.5, fontweight='bold', color='white')
 
-        # gradient label
-        ax.text(x + 0.95, 1.08, r'$\mathbf{g}^{(k)}$', ha='center', va='center',
-                fontsize=7, color='#555')
+        # g^(k) label between rows
+        ax.text(lx + LW/2, BY_TOP - 0.15, r'$\mathbf{g}^{(k)}$',
+                ha='center', va='center', fontsize=7, color='#555')
 
-        # S_theta block
-        rbox(x + 0.3, 0.18, 1.3, 0.5, C_GREEN, ec=C_GREEN)
-        ax.text(x + 0.95, 0.43, r'$\mathcal{S}_{\theta^{(k)}}$', ha='center', va='center',
-                fontsize=7, fontweight='bold', color='white')
+        # S_theta — bottom row, centered
+        sw = 1.2
+        sx = lx + (LW - sw) / 2
+        rbox(ax, sx, BY_BOT, sw, BH, C_GREEN, ec=C_GREEN)
+        ax.text(sx + sw/2, BY_BOT + BH/2, r'$\mathcal{S}_{\theta^{(k)}}$',
+                ha='center', va='center', fontsize=7, fontweight='bold', color='white')
 
-    # ---- Consistent arrows between all stages ----
-    # Layer 1 → Layer 2
-    arrow(ax, 3.78, 1.2, 4.0, 1.2)
-    # Layer 2 → dots
-    arrow(ax, 5.98, 1.2, 6.4, 1.2)
-    # dots → Layer L
-    arrow(ax, 6.7, 1.2, 8.4, 1.2)
-    # Layer L → Output
-    arrow(ax, 10.38, 1.2, 10.65, 1.2)
+    # ---- Arrows between stages ----
+    arr(ax, 3.98, 1.4, 4.1, 1.4)     # L1 → L2
+    arr(ax, 6.18, 1.4, 6.5, 1.4)     # L2 → dots
+    arr(ax, 6.8, 1.4, 8.5, 1.4)      # dots → L
+    arr(ax, 10.58, 1.4, 10.9, 1.4)   # L → Output
 
     # ---- Output ----
-    rbox(10.7, 0.4, 1.1, 1.6, C_GREEN, ec=C_GREEN, lw=1.0)
-    ax.text(11.25, 1.55, 'Output', ha='center', va='center',
+    rbox(ax, 11.0, 0.5, 1.0, 1.8, C_GREEN, ec=C_GREEN, lw=1.0)
+    ax.text(11.5, 1.75, 'Output', ha='center', va='center',
             fontsize=9, fontweight='bold', color='white')
-    ax.text(11.25, 0.95, r'$\hat{\mathbf{h}}$', ha='center', va='center',
+    ax.text(11.5, 1.1, r'$\hat{\mathbf{h}}$', ha='center', va='center',
             fontsize=11, color='white')
 
     # ---- Legend ----
@@ -156,13 +167,13 @@ def fig_architecture():
         mpatches.Patch(facecolor=C_GREEN, edgecolor='#444', label=r'Threshold $\mathcal{S}_{\theta^{(k)}}$'),
     ]
     ax.legend(handles=leg, loc='lower center', ncol=3, fontsize=8,
-              bbox_to_anchor=(0.5, -0.08), frameon=False)
+              bbox_to_anchor=(0.5, -0.02), frameon=False)
 
     save_pub(fig, 'fig_architecture')
 
 
 # ============================================================
-# Figure 2: NMSE vs SNR
+# Figure 2: NMSE vs SNR (v3 — legend moved to upper-right)
 # ============================================================
 def fig_nmse_vs_snr():
     fig, ax = plt.subplots(figsize=(5.5, 4))
@@ -184,7 +195,8 @@ def fig_nmse_vs_snr():
 
     ax.set_xlabel('SNR (dB)')
     ax.set_ylabel('NMSE (dB)')
-    ax.legend(fontsize=7.5, ncol=2, loc='lower left')
+    # Legend in upper-right — clean area, no lines to block
+    ax.legend(fontsize=7.5, ncol=2, loc='upper right')
     ax.grid(alpha=0.25)
     ax.set_ylim([-62, 5])
 
@@ -220,7 +232,7 @@ def fig_nmse_vs_sparsity():
     ax.set_xlabel('Sparsity $K$')
     ax.set_ylabel('NMSE (dB)')
     ax.set_xticks(K)
-    ax.legend(fontsize=7.5, loc='lower left')
+    ax.legend(fontsize=7.5, loc='upper right')
     ax.grid(alpha=0.25)
 
     ax.annotate('Divergence\n(1/5 seeds)',
@@ -232,7 +244,7 @@ def fig_nmse_vs_sparsity():
 
 
 # ============================================================
-# Figure 4: NMSE vs Channel Length (fixed: complete LISTA line, legend position)
+# Figure 4: NMSE vs Channel Length
 # ============================================================
 def fig_nmse_vs_channellen():
     fig, ax = plt.subplots(figsize=(5.5, 4))
@@ -242,24 +254,21 @@ def fig_nmse_vs_channellen():
     nlms  = np.array([-18.00, -16.57, -7.79, -3.24])
     omp   = np.array([-32.91, -37.53, -33.56, -12.99])
     lasso = np.array([-24.33, -29.04, -26.36, -10.16])
-    lista = np.array([-30.27, -32.29, -25.54, 26.84])  # N=256 diverged
+    lista = np.array([-30.27, -32.29, -25.54, 26.84])
 
     ax.plot(N, omp,   '-s', color=C_OMP,   label='OMP',   markersize=5, linewidth=1.5)
     ax.plot(N, lasso, '-D', color=C_LASSO,  label='LASSO', markersize=4, linewidth=1.2)
     ax.plot(N, nlms,  '--', color=C_NLMS,   label='NLMS',  linewidth=1.0, alpha=0.7)
     ax.plot(N, lms,   ':',  color=C_LMS,    label='LMS',   linewidth=1.0, alpha=0.7)
 
-    # LISTA: solid line for valid points, X marker for diverged point
     ax.plot(N[:3], lista[:3], '-o', color=C_LISTA, label='LISTA',
             markersize=6, linewidth=2.2, zorder=5)
     ax.plot(256, 26.84, 'x', color=C_LISTA, markersize=10, markeredgewidth=2.5, zorder=5)
-    # Dashed extension to show discontinuity
     ax.plot([128, 256], [-25.54, 26.84], '--', color=C_LISTA, alpha=0.3, linewidth=1)
 
     ax.set_xlabel('Channel length $N$')
     ax.set_ylabel('NMSE (dB)')
     ax.set_xticks(N)
-    # Legend in upper-left to avoid blocking LISTA line
     ax.legend(fontsize=7.5, loc='upper left')
     ax.grid(alpha=0.25)
 
@@ -325,10 +334,9 @@ def fig_ber_nmse_disconnect():
     ax1.set_xlabel('SNR (dB)')
     ax1.set_ylabel('NMSE (dB)')
     ax1.set_title('(a) NMSE vs SNR', fontsize=10, fontweight='bold', pad=8)
-    ax1.legend(fontsize=7.5)
+    ax1.legend(fontsize=7.5, loc='lower left')
     ax1.grid(alpha=0.25)
 
-    # Gap annotation with offset text
     ax1.annotate('', xy=(20, -24.25), xytext=(20, -37.09),
                 arrowprops=dict(arrowstyle='<->', color='#666', lw=1))
     ax1.text(22, -30.5, '12.8 dB', fontsize=7.5, ha='left', va='center', color='#666',
@@ -352,7 +360,7 @@ def fig_ber_nmse_disconnect():
     ax2.set_xlabel('SNR (dB)')
     ax2.set_ylabel('16-QAM BER')
     ax2.set_title('(b) BER under ZF equalization', fontsize=10, fontweight='bold', pad=8)
-    ax2.legend(fontsize=7.5)
+    ax2.legend(fontsize=7.5, loc='upper right')
     ax2.grid(alpha=0.25)
 
     plt.tight_layout()
@@ -360,10 +368,10 @@ def fig_ber_nmse_disconnect():
 
 
 # ============================================================
-# Figure 7: Threshold Comparison (fixed: text above arrow, not on it)
+# Figure 7: Threshold Comparison
 # ============================================================
 def fig_threshold_comparison():
-    fig, ax = plt.subplots(figsize=(4, 4.2))
+    fig, ax = plt.subplots(figsize=(4, 4.5))
 
     methods = ['Soft\n(LISTA)', 'Hard', 'Semi-soft\n(garrote)']
     nmse = [-24.59, -31.72, -27.85]
@@ -373,28 +381,17 @@ def fig_threshold_comparison():
     bars = ax.bar(methods, nmse, yerr=std, capsize=4, color=colors,
                   alpha=0.9, edgecolor='#333', linewidth=0.6, width=0.55)
 
-    # Value labels above bars
     for bar, m in zip(bars, nmse):
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
                 f'{m:.1f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
 
-    # Bracket arrow BELOW the bars (in the gap area)
-    # Draw bracket between Soft and Hard
-    y_top = -24.59
-    y_bot = -31.72
-    y_mid = (y_top + y_bot) / 2
-
-    # Bracket lines
-    x0, x1_br = 0, 1
-    bracket_y = -33.0  # Below all bars
-    ax.annotate('', xy=(x0, bracket_y), xytext=(x1_br, bracket_y),
+    # Bracket below bars
+    y_bracket = -34.0
+    ax.annotate('', xy=(0, y_bracket), xytext=(1, y_bracket),
                 arrowprops=dict(arrowstyle='<->', color='#444', lw=1.5))
-    # Vertical ticks
-    ax.plot([x0, x0], [bracket_y, -32.2], color='#444', lw=1.0)
-    ax.plot([x1_br, x1_br], [bracket_y, -32.2], color='#444', lw=1.0)
-
-    # Text BELOW the bracket
-    ax.text(0.5, -34.0, '7.1 dB\n$p < 0.001$', ha='center', va='top',
+    ax.plot([0, 0], [y_bracket, -32.5], color='#444', lw=1.0)
+    ax.plot([1, 1], [y_bracket, -32.5], color='#444', lw=1.0)
+    ax.text(0.5, y_bracket - 0.5, '7.1 dB\n$p < 0.001$', ha='center', va='top',
             fontsize=8, color='#333', fontweight='bold')
 
     ax.set_ylabel('NMSE (dB)')
@@ -492,12 +489,12 @@ def fig_threshold_schedule():
 
 
 # ============================================================
-# Figure 10: Summary (v2 - fixed text overflow and alignment)
+# Figure 10: Summary (v3 — fixed alignment, no text overflow)
 # ============================================================
 def fig_summary():
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.set_xlim(0, 10)
-    ax.set_ylim(0, 5.8)
+    ax.set_ylim(0, 6.0)
     ax.axis('off')
 
     def cbox(x, y, w, h, fc, ec):
@@ -506,47 +503,61 @@ def fig_summary():
             facecolor=fc, edgecolor=ec, linewidth=1.2)
         ax.add_patch(rect)
 
-    # ---- Row 1 left: NMSE ----
-    cbox(0.2, 3.8, 4.5, 1.7, '#FFF3E0', C_ORANGE)
-    ax.text(2.45, 5.2, 'NMSE Performance', ha='center', fontsize=10,
-            fontweight='bold', color=C_ORANGE)
-    ax.text(2.45, 4.8, 'LISTA: $-25$ dB (saturates)', ha='center', fontsize=9, color=C_OMP)
-    ax.text(2.45, 4.45, 'OMP: $-37$ dB  |  FISTA: $-34$ dB', ha='center',
-            fontsize=8.5, color='#555')
-    ax.text(2.45, 4.05, r'$\Rightarrow$ LISTA trails by 12–27 dB',
+    # ---- Row 1: two boxes, same Y and same height ----
+    BOX_Y = 3.8
+    BOX_H = 1.8
+
+    # Left: NMSE
+    cbox(0.2, BOX_Y, 4.5, BOX_H, '#FFF3E0', C_ORANGE)
+    ax.text(2.45, BOX_Y + BOX_H - 0.25, 'NMSE Performance', ha='center',
+            fontsize=10, fontweight='bold', color=C_ORANGE)
+    ax.text(2.45, BOX_Y + BOX_H - 0.65, 'LISTA: $-25$ dB (saturates)', ha='center',
+            fontsize=9, color=C_OMP)
+    ax.text(2.45, BOX_Y + BOX_H - 1.0, 'OMP: $-37$ dB  |  FISTA: $-34$ dB',
+            ha='center', fontsize=8.5, color='#555')
+    ax.text(2.45, BOX_Y + 0.25, r'$\Rightarrow$ LISTA trails by 12–27 dB',
             ha='center', fontsize=9, fontweight='bold', color=C_OMP)
 
-    # ---- Row 1 right: BER ----
-    cbox(5.3, 3.8, 4.5, 1.7, '#E8F5E9', C_GREEN)
-    ax.text(7.55, 5.2, 'BER Performance (ZF, 16-QAM)', ha='center', fontsize=10,
-            fontweight='bold', color=C_GREEN)
-    ax.text(7.55, 4.8, 'LISTA matches or beats OMP', ha='center', fontsize=9, color=C_GREEN)
-    ax.text(7.55, 4.45, 'at SNR $\\geq 15$ dB ($p < 0.05$)', ha='center',
-            fontsize=8.5, color='#555')
-    ax.text(7.55, 4.05, r'$\Rightarrow$ BER advantage despite worse NMSE',
+    # Right: BER
+    cbox(5.3, BOX_Y, 4.5, BOX_H, '#E8F5E9', C_GREEN)
+    ax.text(7.55, BOX_Y + BOX_H - 0.25, 'BER Performance (ZF, 16-QAM)',
+            ha='center', fontsize=10, fontweight='bold', color=C_GREEN)
+    ax.text(7.55, BOX_Y + BOX_H - 0.65, 'LISTA matches or beats OMP',
+            ha='center', fontsize=9, color=C_GREEN)
+    ax.text(7.55, BOX_Y + BOX_H - 1.0, 'at SNR $\\geq 15$ dB ($p < 0.05$)',
+            ha='center', fontsize=8.5, color='#555')
+    ax.text(7.55, BOX_Y + 0.25, r'$\Rightarrow$ BER advantage despite worse NMSE',
             ha='center', fontsize=9, fontweight='bold', color=C_GREEN)
 
-    # Arrow between top boxes
-    arrow(ax, 4.75, 4.65, 5.25, 4.65, color='#999', lw=1.5)
+    # Arrow
+    arr(ax, 4.75, BOX_Y + BOX_H/2, 5.25, BOX_Y + BOX_H/2, color='#999', lw=1.5)
 
-    # ---- Row 2: Mechanism ----
-    cbox(0.2, 1.8, 9.6, 1.7, '#E3F2FD', C_LISTA)
-    ax.text(5, 3.2, 'Mechanism: Error Concentration', ha='center',
-            fontsize=11, fontweight='bold', color=C_LISTA)
-    ax.text(5, 2.75, 'LISTA concentrates 100.0% of estimation error on true tap locations',
+    # ---- Row 2: Mechanism (taller box with more padding) ----
+    MECH_Y = 1.6
+    MECH_H = 1.9
+    cbox(0.2, MECH_Y, 9.6, MECH_H, '#E3F2FD', C_LISTA)
+    ax.text(5, MECH_Y + MECH_H - 0.25, 'Mechanism: Error Concentration',
+            ha='center', fontsize=11, fontweight='bold', color=C_LISTA)
+    ax.text(5, MECH_Y + MECH_H - 0.65,
+            'LISTA concentrates 100.0% of estimation error on true tap locations',
             ha='center', fontsize=9, color='#333')
-    ax.text(5, 2.35, '(vs. 95.2% OMP, 92.4% ISTA) → $267\\times$ less non-support error',
+    ax.text(5, MECH_Y + MECH_H - 1.0,
+            '(vs. 95.2% OMP, 92.4% ISTA) → $267\\times$ less non-support error',
             ha='center', fontsize=8.5, color='#555')
-    ax.text(5, 1.98, 'Learned threshold schedule dominates ($+14$–$18$ dB); '
+    ax.text(5, MECH_Y + 0.25,
+            'Learned threshold schedule dominates ($+14$–$18$ dB); '
             'hard thresholding outperforms soft by 7.1 dB',
             ha='center', fontsize=8, color='#777')
 
-    # ---- Row 3: Recommendation (two lines to fit) ----
-    cbox(0.8, 0.2, 8.4, 1.2, '#F3E5F5', C_FISTA)
-    ax.text(5, 0.95, 'Recommendation', ha='center', va='center',
+    # ---- Row 3: Recommendation ----
+    REC_Y = 0.3
+    REC_H = 1.0
+    cbox(0.8, REC_Y, 8.4, REC_H, '#F3E5F5', C_FISTA)
+    ax.text(5, REC_Y + REC_H - 0.25, 'Recommendation', ha='center',
             fontsize=9, fontweight='bold', color=C_FISTA)
-    ax.text(5, 0.55, 'LISTA: throughput-critical ZF  |  OMP/FISTA: NMSE-critical',
-            ha='center', va='center', fontsize=8.5, color='#555')
+    ax.text(5, REC_Y + 0.25,
+            'LISTA: throughput-critical ZF  |  OMP/FISTA: NMSE-critical',
+            ha='center', fontsize=8.5, color='#555')
 
     save_pub(fig, 'fig_summary')
 
@@ -555,7 +566,7 @@ def fig_summary():
 # Main
 # ============================================================
 if __name__ == '__main__':
-    print("Generating all 10 figures (v2)...")
+    print("Generating all 10 figures (v3)...")
     fig_architecture()
     fig_nmse_vs_snr()
     fig_nmse_vs_sparsity()
