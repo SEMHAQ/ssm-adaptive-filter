@@ -176,7 +176,7 @@ def fig_architecture():
 # Figure 2: NMSE vs SNR (v3 — legend moved to upper-right)
 # ============================================================
 def fig_nmse_vs_snr():
-    fig, ax = plt.subplots(figsize=(5.5, 4))
+    fig, ax = plt.subplots(figsize=(5.5, 4.3))
 
     snr = np.array([-5, 0, 5, 10, 15, 20, 25, 30, 40])
     lms   = np.array([-2.78, -5.90, -8.79, -11.90, -13.64, -14.51, -15.74, -16.50, -16.41])
@@ -196,9 +196,10 @@ def fig_nmse_vs_snr():
     ax.set_xlabel('SNR (dB)')
     ax.set_ylabel('NMSE (dB)')
     # Legend in upper-right — clean area, no lines to block
-    ax.legend(fontsize=7.5, ncol=2, loc='lower left')
+    ax.legend(fontsize=7.5, ncol=3, loc='upper center', bbox_to_anchor=(0.5, -0.12))
     ax.grid(alpha=0.25)
     ax.set_ylim([-62, 5])
+    fig.subplots_adjust(bottom=0.22)
 
     ax.annotate('LISTA saturates\nat $\\approx -25$ dB',
                 xy=(25, -25), xytext=(32, -10),
