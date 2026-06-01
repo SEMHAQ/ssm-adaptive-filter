@@ -62,10 +62,11 @@ We characterize this mechanism through comprehensive ablation (20 seeds, Holm--B
 
 % Research highlights
 \begin{highlights}
-\item LISTA trails OMP by 13--33~dB in NMSE but concentrates $100.0\%$ of estimation error on true taps ($379\times$ less non-support error than ISTA), providing BER benefits under ZF equalization for 16-QAM ($p < 0.05$)
-\item Ablation (20 seeds, Holm--Bonferroni): per-layer threshold schedule dominant ($+14$--$18$~dB); threshold comparison: hard thresholding outperforms soft by $7.1$~dB ($p < 0.001$), indicating learned adaptation
-\item LISTA achieves $25\times$ faster batched inference than OMP ($0.22$ vs $5.41$~ms/sample); SNR-specific training improves NMSE to $-31$~dB. Deployment guidance: use LISTA for speed/BER, OMP/FISTA for NMSE
-\item Error concentration transfers to ITU channels ($99.3$--$99.5\%$), complex-valued channels ($97.8\%$), and sparsity $K=10$ ($99.9\%$). Requires $M/N \geq 2$ for stable operation
+\item LISTA concentrates 100\% of estimation error on true tap locations (vs.\ 95\% for OMP)
+\item Error concentration yields competitive BER under ZF equalization despite 12--33\,dB NMSE gap
+\item Learned per-layer threshold schedule is the dominant mechanism (+14--18\,dB contribution)
+\item Feedforward architecture provides 25$\times$ faster batched inference than OMP
+\item Mechanism transfers to ITU channels (99.5\%) and complex-valued pilots (97.8\%)
 \end{highlights}
 
 % Keywords
