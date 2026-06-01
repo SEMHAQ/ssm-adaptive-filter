@@ -1,0 +1,13 @@
+# Highlights (for DSP submission)
+
+DSP requires 3-5 highlights, each one sentence, max 85 characters.
+
+1. LISTA concentrates 100% of estimation error on true tap locations (vs. 95% for OMP)
+2. Error concentration yields competitive BER under ZF equalization despite 12-33 dB NMSE gap
+3. Learned per-layer threshold schedule is the dominant mechanism (+14-18 dB contribution)
+4. Feedforward architecture provides 25x faster batched inference than OMP
+5. Mechanism transfers to ITU channels (99.5%) and complex-valued pilots (97.8%)
+
+## Submission Portal Input
+
+Copy-paste these into the Elsevier submission system's "Highlights" field.
