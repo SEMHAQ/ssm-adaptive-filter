@@ -1,0 +1,146 @@
+{
+  "config": {
+    "N": 64,
+    "M": 256,
+    "K": 5,
+    "L": 20
+  },
+  "flops": {
+    "lista": {
+      "total": 760064,
+      "per_layer": 37184,
+      "toeplitz_build": 16384,
+      "breakdown": {
+        "convolution_AX": "256*64 = 16384 per layer",
+        "gradient_ATr": "256*64 = 16384 per layer",
+        "linear_mapping_Wh": "64*64 = 4096 per layer",
+        "thresholding": "3*64 = 192 per layer"
+      }
+    },
+    "omp": {
+      "total": 331745,
+      "per_iteration_avg": 66349,
+      "breakdown": {
+        "correlation": "256*64 = 16384 per iter",
+        "least_squares": "k*256*64 per iter (k grows)",
+        "residual": "256*k per iter"
+      }
+    },
+    "lasso": {
+      "total": 6604800,
+      "per_iteration": 33024,
+      "iterations": 200
+    },
+    "ratios": {
+      "lista_vs_omp": 2.2911091350284103,
+      "lista_vs_lasso": 0.11507751937984496,
+      "omp_vs_lasso": 0.05022786458333333
+    }
+  },
+  "parallelism": {
+    "lista": {
+      "description": "Fixed-depth feedforward network",
+      "layer_parallelism": "Each layer has 3 independent matrix-vector ops (A@h, A^T@r, W@h) that can be pipelined",
+      "batch_parallelism": "Full batch parallelism across channel estimates",
+      "intra_layer": [
+        "A @ h: matrix-vector multiply, parallelizable across M rows",
+        "A^T @ residual: matrix-vector multiply, parallelizable across N rows",
+        "W @ h: N x N matrix-vector, parallelizable across N rows",
+        "Soft-thresholding: element-wise, fully parallel"
+      ],
+      "inter_layer": "Sequential (layer k+1 depends on layer k output)",
+      "hardware_utilization": "High \u2014 identical ops per layer, regular data flow, no branches",
+      "pipeline_depth": 20,
+      "fpga_suitability": "Excellent \u2014 fixed computation graph, no dynamic control flow"
+    },
+    "omp": {
+      "description": "Iterative greedy algorithm with dynamic support set",
+      "batch_parallelism": "Full batch parallelism across channel estimates",
+      "intra_iteration": [
+        "Correlation A^T @ r: parallelizable across N atoms",
+        "Least squares: k x k system solve, parallelizable but small"
+      ],
+      "inter_iteration": "Sequential (iteration k+1 depends on k)",
+      "dynamic_behavior": "Support set selection (argmax) requires reduction across N values",
+      "hardware_utilization": "Moderate \u2014 support set varies per iteration, irregular memory access",
+      "pipeline_depth": 5,
+      "fpga_suitability": "Moderate \u2014 dynamic argmax and varying LS dimension complicate pipelining"
+    },
+    "lasso": {
+      "description": "Iterative proximal gradient descent",
+      "batch_parallelism": "Full batch parallelism",
+      "intra_iteration": "Same as LISTA per iteration (A@h, A^T@r, soft-threshold)",
+      "inter_iteration": "Sequential",
+      "hardware_utilization": "Low \u2014 200 iterations vs LISTA's 20 layers",
+      "pipeline_depth": 200,
+      "fpga_suitability": "Poor \u2014 too many iterations for hardware pipelining"
+    }
+  },
+  "memory": {
+    "lista": {
+      "parameters": 81960,
+      "parameter_memory_bytes": 327840,
+      "parameter_memory_KB": 320.15625,
+      "activation_memory": "20 layers * 64 activations * 4 bytes = 5120 bytes",
+      "access_pattern": "Sequential \u2014 same matrix-vector ops every layer, predictable address sequence",
+      "cache_behavior": "Excellent \u2014 W^(k) matrices fit in L1/L2 cache for N=64 (16KB each)",
+      "bandwidth_requirement": "Low \u2014 parameters loaded once per inference, reused across batch"
+    },
+    "omp": {
+      "storage": "A matrix: 256*64*4 = 65536 bytes; support set: 5 indices",
+      "access_pattern": "Semi-random \u2014 argmax scans all N correlations, LS accesses support columns",
+      "cache_behavior": "Moderate \u2014 A matrix access is column-wise (stride M), support set is random",
+      "bandwidth_requirement": "Moderate \u2014 A matrix loaded every iteration, residual updated"
+    },
+    "lasso": {
+      "storage": "A matrix: 256*64*4 = 65536 bytes; h vector: 64*4 bytes",
+      "access_pattern": "Sequential \u2014 same as LISTA per iteration",
+      "cache_behavior": "Good per iteration, but 200 iterations increase total bandwidth",
+      "bandwidth_requirement": "High \u2014 200 iterations of full matrix-vector products"
+    }
+  },
+  "hardware_timing_estimate": {
+    "assumptions": {
+      "DSP_count": 64,
+      "clock_MHz": 500,
+      "precision": "float32"
+    },
+    "lista": {
+      "sequential_latency_us": 23.08,
+      "pipelined_throughput_us": 1.154,
+      "total_clocks": 11540
+    },
+    "omp": {
+      "latency_us": 5.13,
+      "total_clocks": 2565
+    },
+    "speedup_sequential": 0.22227036395147315,
+    "speedup_pipelined": 4.445407279029463
+  },
+  "scaling": {
+    "32": {
+      "lista_params": 20520,
+      "lista_flops": 359552,
+      "omp_flops": 167905,
+      "lista_omp_flops_ratio": 2.1414013876894673
+    },
+    "64": {
+      "lista_params": 81960,
+      "lista_flops": 760064,
+      "omp_flops": 331745,
+      "lista_omp_flops_ratio": 2.2911091350284103
+    },
+    "128": {
+      "lista_params": 327720,
+      "lista_flops": 1683968,
+      "omp_flops": 659425,
+      "lista_omp_flops_ratio": 2.5536914736323313
+    },
+    "256": {
+      "lista_params": 1310760,
+      "lista_flops": 4023296,
+      "omp_flops": 1314785,
+      "lista_omp_flops_ratio": 3.0600409952958088
+    }
+  }
+}

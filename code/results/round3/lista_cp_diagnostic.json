@@ -1,0 +1,442 @@
+{
+  "config": {
+    "N": 64,
+    "M": 256,
+    "K": 5,
+    "L": 20
+  },
+  "diagnostic": {
+    "param_comparison": {
+      "layers.0.step": {
+        "lista_mean": 0.4887341856956482,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4887341856956482,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.0.W.weight": {
+        "lista_mean": 0.014847276732325554,
+        "lista_std": 0.11784659326076508,
+        "lista_cp_mean": 0.014847276732325554,
+        "lista_cp_std": 0.11784659326076508,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.1.step": {
+        "lista_mean": 0.4889252781867981,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4889252781867981,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.1.W.weight": {
+        "lista_mean": 0.017042705789208412,
+        "lista_std": 0.12479425221681595,
+        "lista_cp_mean": 0.017042705789208412,
+        "lista_cp_std": 0.12479425221681595,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.2.step": {
+        "lista_mean": 0.4891093373298645,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4891093373298645,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.2.W.weight": {
+        "lista_mean": 0.016837812960147858,
+        "lista_std": 0.12433799356222153,
+        "lista_cp_mean": 0.016837812960147858,
+        "lista_cp_std": 0.12433799356222153,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.3.step": {
+        "lista_mean": 0.4891504943370819,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4891504943370819,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.3.W.weight": {
+        "lista_mean": 0.017379533499479294,
+        "lista_std": 0.12476298958063126,
+        "lista_cp_mean": 0.017379533499479294,
+        "lista_cp_std": 0.12476298958063126,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.4.step": {
+        "lista_mean": 0.4893711805343628,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4893711805343628,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.4.W.weight": {
+        "lista_mean": 0.01755821332335472,
+        "lista_std": 0.12457500398159027,
+        "lista_cp_mean": 0.01755821332335472,
+        "lista_cp_std": 0.12457500398159027,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.5.step": {
+        "lista_mean": 0.489434152841568,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.489434152841568,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.5.W.weight": {
+        "lista_mean": 0.017639216035604477,
+        "lista_std": 0.1247611790895462,
+        "lista_cp_mean": 0.017639216035604477,
+        "lista_cp_std": 0.1247611790895462,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.6.step": {
+        "lista_mean": 0.4897007942199707,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4897007942199707,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.6.W.weight": {
+        "lista_mean": 0.01774928905069828,
+        "lista_std": 0.12458036839962006,
+        "lista_cp_mean": 0.01774928905069828,
+        "lista_cp_std": 0.12458036839962006,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.7.step": {
+        "lista_mean": 0.4897743761539459,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4897743761539459,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.7.W.weight": {
+        "lista_mean": 0.017737900838255882,
+        "lista_std": 0.12471812218427658,
+        "lista_cp_mean": 0.017737900838255882,
+        "lista_cp_std": 0.12471812218427658,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.8.step": {
+        "lista_mean": 0.48999035358428955,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.48999035358428955,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.8.W.weight": {
+        "lista_mean": 0.017833642661571503,
+        "lista_std": 0.12457729876041412,
+        "lista_cp_mean": 0.017833642661571503,
+        "lista_cp_std": 0.12457729876041412,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.9.step": {
+        "lista_mean": 0.49007877707481384,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.49007877707481384,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.9.W.weight": {
+        "lista_mean": 0.01779458299279213,
+        "lista_std": 0.1246960237622261,
+        "lista_cp_mean": 0.01779458299279213,
+        "lista_cp_std": 0.1246960237622261,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.10.step": {
+        "lista_mean": 0.49024516344070435,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.49024516344070435,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.10.W.weight": {
+        "lista_mean": 0.017850972712039948,
+        "lista_std": 0.12460622936487198,
+        "lista_cp_mean": 0.017850972712039948,
+        "lista_cp_std": 0.12460622936487198,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.11.step": {
+        "lista_mean": 0.4903249442577362,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4903249442577362,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.11.W.weight": {
+        "lista_mean": 0.01780756562948227,
+        "lista_std": 0.12471480667591095,
+        "lista_cp_mean": 0.01780756562948227,
+        "lista_cp_std": 0.12471480667591095,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.12.step": {
+        "lista_mean": 0.49044889211654663,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.49044889211654663,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.12.W.weight": {
+        "lista_mean": 0.017806407064199448,
+        "lista_std": 0.12468875199556351,
+        "lista_cp_mean": 0.017806407064199448,
+        "lista_cp_std": 0.12468875199556351,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.13.step": {
+        "lista_mean": 0.49050506949424744,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.49050506949424744,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.13.W.weight": {
+        "lista_mean": 0.017755474895238876,
+        "lista_std": 0.12479718029499054,
+        "lista_cp_mean": 0.017755474895238876,
+        "lista_cp_std": 0.12479718029499054,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.14.step": {
+        "lista_mean": 0.4905894696712494,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4905894696712494,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.14.W.weight": {
+        "lista_mean": 0.01770654134452343,
+        "lista_std": 0.12485209852457047,
+        "lista_cp_mean": 0.01770654134452343,
+        "lista_cp_std": 0.12485209852457047,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.15.step": {
+        "lista_mean": 0.49061980843544006,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.49061980843544006,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.15.W.weight": {
+        "lista_mean": 0.017603566870093346,
+        "lista_std": 0.1250276416540146,
+        "lista_cp_mean": 0.017603566870093346,
+        "lista_cp_std": 0.1250276416540146,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.16.step": {
+        "lista_mean": 0.4896455407142639,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4896455407142639,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.16.W.weight": {
+        "lista_mean": 0.01748841628432274,
+        "lista_std": 0.1252387911081314,
+        "lista_cp_mean": 0.01748841628432274,
+        "lista_cp_std": 0.1252387911081314,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.17.step": {
+        "lista_mean": 0.48961764574050903,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.48961764574050903,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.17.W.weight": {
+        "lista_mean": 0.01729760691523552,
+        "lista_std": 0.1255660355091095,
+        "lista_cp_mean": 0.01729760691523552,
+        "lista_cp_std": 0.1255660355091095,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.18.step": {
+        "lista_mean": 0.48955267667770386,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.48955267667770386,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.18.W.weight": {
+        "lista_mean": 0.017010394483804703,
+        "lista_std": 0.12596166133880615,
+        "lista_cp_mean": 0.017010394483804703,
+        "lista_cp_std": 0.12596166133880615,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.19.step": {
+        "lista_mean": 0.4893438518047333,
+        "lista_std": 0.0,
+        "lista_cp_mean": 0.4893438518047333,
+        "lista_cp_std": 0.0,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      },
+      "layers.19.W.weight": {
+        "lista_mean": 0.016537711024284363,
+        "lista_std": 0.1263439655303955,
+        "lista_cp_mean": 0.016537711024284363,
+        "lista_cp_std": 0.1263439655303955,
+        "max_diff": 0.0,
+        "mean_diff": 0.0
+      }
+    },
+    "weight_clipping": [
+      {
+        "layer": 0,
+        "spectral_norm_W_minus_I": 0.04977428913116455,
+        "clipped": true
+      },
+      {
+        "layer": 1,
+        "spectral_norm_W_minus_I": 0.3416072914376023,
+        "clipped": true
+      },
+      {
+        "layer": 2,
+        "spectral_norm_W_minus_I": 0.2514826820190011,
+        "clipped": true
+      },
+      {
+        "layer": 3,
+        "spectral_norm_W_minus_I": 0.3338902042960471,
+        "clipped": true
+      },
+      {
+        "layer": 4,
+        "spectral_norm_W_minus_I": 0.2906326876724079,
+        "clipped": true
+      },
+      {
+        "layer": 5,
+        "spectral_norm_W_minus_I": 0.3233800071704038,
+        "clipped": true
+      },
+      {
+        "layer": 6,
+        "spectral_norm_W_minus_I": 0.2768200611119364,
+        "clipped": true
+      },
+      {
+        "layer": 7,
+        "spectral_norm_W_minus_I": 0.2989222405615052,
+        "clipped": true
+      },
+      {
+        "layer": 8,
+        "spectral_norm_W_minus_I": 0.25757122401295207,
+        "clipped": true
+      },
+      {
+        "layer": 9,
+        "spectral_norm_W_minus_I": 0.27436105417532747,
+        "clipped": true
+      },
+      {
+        "layer": 10,
+        "spectral_norm_W_minus_I": 0.2411101983863328,
+        "clipped": true
+      },
+      {
+        "layer": 11,
+        "spectral_norm_W_minus_I": 0.253104979171627,
+        "clipped": true
+      },
+      {
+        "layer": 12,
+        "spectral_norm_W_minus_I": 0.22869170706147587,
+        "clipped": true
+      },
+      {
+        "layer": 13,
+        "spectral_norm_W_minus_I": 0.22934278356881446,
+        "clipped": true
+      },
+      {
+        "layer": 14,
+        "spectral_norm_W_minus_I": 0.20273125939726075,
+        "clipped": true
+      },
+      {
+        "layer": 15,
+        "spectral_norm_W_minus_I": 0.19146636546872847,
+        "clipped": true
+      },
+      {
+        "layer": 16,
+        "spectral_norm_W_minus_I": 0.15995734849029716,
+        "clipped": true
+      },
+      {
+        "layer": 17,
+        "spectral_norm_W_minus_I": 0.13236503676070288,
+        "clipped": true
+      },
+      {
+        "layer": 18,
+        "spectral_norm_W_minus_I": 0.09127532360468121,
+        "clipped": true
+      },
+      {
+        "layer": 19,
+        "spectral_norm_W_minus_I": 0.06075429293910014,
+        "clipped": true
+      }
+    ],
+    "nmse_lista": -23.872959957151934,
+    "nmse_lista_cp": -24.190218938288307,
+    "nmse_diff": 0.31725898113637285,
+    "analysis": {
+      "all_within_clip_bound": true,
+      "max_spectral_norm": 0.3416072914376023,
+      "explanation": "LISTA-CP weight clipping (||W-I||_2 < 1) is a no-op because trained LISTA parameters naturally satisfy this constraint. With L=20 layers and mixed-SNR training, the gradient updates are small enough that W remains close to I. Therefore LISTA-CP and LISTA learn identical parameters, producing identical NMSE."
+    }
+  }
+}

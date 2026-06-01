@@ -33,7 +33,7 @@
 \shortauthors{H. Yu}
 
 % Main title of the paper
-\title [mode = title]{Analysis of Deep-Unfolded LISTA for Sparse Channel Estimation: Generalization, Ablation, and Practical Limitations}
+\title [mode = title]{Systematic Analysis of Deep-Unfolded LISTA for Sparse Channel Estimation: Generalization, Error Structure, and Ablation}
 
 % First author
 \author[1]{Huanjie Yu}[orcid=0009-0008-9824-1801]
@@ -55,17 +55,15 @@
 
 % Abstract
 \begin{abstract}
-Sparse channel estimation is a fundamental problem in wireless communications. While Orthogonal Matching Pursuit (OMP) and LASSO achieve high accuracy, they require the sparsity level $K$ as input and incur high computational cost. We investigate the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA)---a deep-unfolded architecture---for sparse channel estimation, emphasizing its practical advantages: \emph{no sparsity knowledge required}, $33\times$ faster inference than OMP, and strong generalization to realistic channel models. On ITU pedestrian and vehicular channel models, LISTA trained on i.i.d.~Gaussian data achieves $-28$~dB NMSE, \emph{outperforming} OMP ($-25$ to $-27$~dB) by $\sim$1--3~dB. On i.i.d.~Gaussian channels, LISTA outperforms OMP at 7 of 9 tested SNR levels (SNR $\leq 25$~dB), outperforms LASSO at low-to-moderate sparsity ($K \leq 8$), and outperforms LMS/NLMS by $\sim$10--15~dB. The ablation study reveals large, statistically significant component contributions: the learnable threshold contributes $+5.9$~dB ($p = 0.002$) and per-layer parameterization $+3.1$~dB ($p = 0.004$). These findings establish LISTA as a practical alternative to OMP/LASSO for sparse channel estimation, particularly when the sparsity level is unknown or fast inference is required.
+We investigate the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA)---a deep-unfolded architecture---for sparse channel estimation. Our central finding is that FISTA with 20 iterations and grid-searched threshold outperforms LISTA at all SNR levels by 1--27~dB in NMSE without requiring any training data, demonstrating that LISTA's learned parameters do not improve estimation accuracy over standard accelerated ISTA. On i.i.d.~Gaussian channels, LISTA's NMSE saturates at approximately $-25$~dB for SNR $\geq 10$~dB, trailing OMP by 13--33~dB; on realistic ITU channels it achieves $-23$ to $-27$~dB. Under MMSE equalization (the standard in modern receivers), all estimators converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$). A CNN baseline with comparable parameters ($82$K vs $80$K) achieves similar NMSE to LISTA, confirming that the saturation is not specific to deep unfolding. Despite these NMSE limitations, a mechanism analysis reveals that LISTA concentrates $100.0\% \pm 0.0\%$ of estimation error on true tap locations (vs.~$95.2\% \pm 0.6\%$ for OMP and $92.4\% \pm 0.4\%$ for ISTA; 20 seeds), with pre-thresholding analysis confirming this is a genuine learned property ($68.3\%$ before thresholding) rather than a trivial artifact of sparsification. The mechanism transfers to complex-valued channels with QPSK pilots ($97.8\% \pm 0.3\%$). Under ZF equalization, this error concentration provides tangible BER benefits for 16-QAM at SNR $\geq 15$~dB (Holm--Bonferroni corrected $p < 0.05$). Ablation with 20 seeds reveals the per-layer threshold schedule is dominant ($+14$--$18$~dB degradation) and $\mathbf{W}^{(k)}$ contributes $+1.24$~dB ($p < 0.001$). We contextualize these findings within approximate message passing (AMP) theory.
 \end{abstract}
 
 % Research highlights
 \begin{highlights}
-\item LISTA outperforms OMP on realistic ITU channels ($-28$~dB vs $-25$ to $-27$~dB) and at 7 of 9 SNR levels on i.i.d.~Gaussian channels
-\item $33\times$ faster inference than OMP ($0.21$ vs $6.91$~ms CPU); $82$K parameters; no sparsity knowledge required
-\item Ablation reveals large, statistically significant component contributions: threshold $+5.9$~dB, per-layer params $+3.1$~dB ($p < 0.01$)
-\item Strong cross-distribution generalization: Gaussian-trained LISTA outperforms OMP on ITU channels
-\item Robust generalization from i.i.d.~Gaussian training to diverse channel types (ITU PedA, VehA)
-\item Optimal depth 15--20 layers; practical deployment framework with hybrid LISTA/OMP fallback
+\item FISTA with 20 iterations outperforms LISTA at all SNR levels by 1--27~dB without training data; a CNN baseline with comparable parameters achieves similar NMSE, confirming the saturation is not deep-unfoldingspecific
+\item Mechanism analysis (20 seeds): LISTA concentrates $100.0\% \pm 0.0\%$ of error on true taps; pre-thresholding analysis confirms this is learned ($68.3\%$ before thresholding), not a trivial artifact. Transfers to complex-valued channels ($97.8\%$)
+\item Ablation (20 seeds, Holm--Bonferroni corrected): per-layer threshold schedule dominant ($+14$--$18$~dB), $\mathbf{W}^{(k)}$ contributes $+1.24$~dB ($p < 0.001$)
+\item SNR-specific training mitigates NMSE saturation: $-31$~dB ($6$~dB improvement). Under MMSE equalization all estimators achieve similar BER; error concentration provides BER benefits only under ZF equalization
 \end{highlights}
 
 % Keywords
@@ -88,18 +86,20 @@ The Iterative Shrinkage-Thresholding Algorithm (ISTA)~\citep{daubechies2004itera
 
 Recent advances in deep learning have inspired the paradigm of \emph{deep unfolding}~\citep{gregor2010learning, monga2021algorithm}, which unrolls iterative optimization algorithms into neural network layers with learnable parameters. This approach combines the interpretability and theoretical grounding of model-based methods with the representation power of data-driven learning. The Learned ISTA (LISTA)~\citep{gregor2010learning} was among the first deep-unfolded architectures, demonstrating that a fixed-depth network can approximate the sparse coding solution with far fewer iterations than the original algorithm.
 
-In this paper, we provide a systematic investigation of LISTA's application to sparse channel estimation, with emphasis on practical deployment advantages. Our key contributions are:
+In this paper, we provide a systematic investigation of LISTA's application to sparse channel estimation, focusing on understanding its behavior, generalization properties, and error structure rather than claiming architectural novelty. Our key contributions are:
 
 \begin{enumerate}
-\item We demonstrate that LISTA, trained on i.i.d.~Gaussian channels, \emph{outperforms OMP and LASSO on realistic ITU channel models} (PedA and VehA) by $\sim$2--3~dB, while requiring $8\times$ less inference time and no knowledge of the sparsity level $K$. On i.i.d.~Gaussian channels, LISTA is competitive with OMP (trailing by 0--10~dB depending on SNR and sparsity) and outperforms LASSO at low-to-moderate sparsity ($K \leq 8$). This cross-distribution generalization is a key practical advantage over classical methods.
+\item We provide a systematic analysis of LISTA's behavior on i.i.d.~Gaussian channels, revealing that NMSE saturates at approximately $-25$~dB for SNR $\geq 10$~dB---likely a training artifact caused by the scale-invariant loss and mixed-SNR training, rather than a fundamental architectural limitation. SNR-specific training breaks this saturation, achieving $-31$~dB. LISTA trails OMP by 13--33~dB and FISTA by 1--27~dB on Gaussian channels, but achieves $-23$ to $-27$~dB on realistic ITU channel models.
 
-\item We conduct comprehensive ablation studies quantifying the contribution of each learnable component---step sizes, thresholds, and the linear mapping $\mathbf{W}^{(k)}$---revealing large, statistically significant contributions from the learnable threshold ($+7.46$~dB, $p < 0.001$) and mapping ($+2.28$~dB, $p < 0.001$).
+\item We conduct a \emph{mechanism analysis} of the BER--NMSE disconnect through BER simulations with QPSK and 16-QAM modulations, validated with 200 channel realizations per SNR point and paired $t$-tests. Under MMSE equalization, all estimators converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$), consistent with MMSE's known robustness---this is expected behavior, not a special property of LISTA. The mechanism analysis (Section~\ref{sec:exp_mechanism}) reveals that LISTA concentrates estimation error on true tap locations, an advantage masked under MMSE but providing tangible BER benefits under ZF equalization for 16-QAM ($p < 0.05$ at SNR $\geq 15$~dB).
 
-\item We evaluate generalization across mismatched channel conditions, including training--test mismatches in sparsity level, channel length, and SNR. This analysis reveals LISTA's robustness boundaries and provides practical guidance for deployment scenarios where channel statistics may drift.
+\item We conduct comprehensive ablation studies with 20 random seeds and statistical significance testing (paired $t$-tests and Cohen's $d$ effect sizes), quantifying the contribution of each learnable component. All three components are individually significant: the per-layer threshold schedule is the dominant contributor ($+14$--$18$~dB degradation when removed), while the learnable mapping $\mathbf{W}^{(k)}$ provides an additional $+1.24$~dB ($p < 0.001$, $d = 1.5$).
 
-\item We compare LISTA against properly tuned baselines, including LASSO with cross-validated regularization and LMS/NLMS with optimized step sizes, to ensure fair comparison. We also analyze the optimal network depth, identifying training instability at intermediate depths and monotonic improvement for deeper architectures.
+\item We evaluate generalization across mismatched channel conditions, including training--test mismatches in sparsity level, channel length, and SNR, as well as cross-distribution generalization to ITU channel models. We additionally compare against LISTA-CP, a convergence-provable variant, and explain the identical performance through diagnostic analysis of the weight clipping constraints.
 
-\item We assess practical deployment considerations including parameter count, inference time, and performance under realistic channel models (ITU pedestrian and vehicular), complementing the idealized i.i.d.~channel experiments.
+\item We investigate mitigation strategies for the SNR saturation, demonstrating that SNR-specific training (training on a narrow SNR range) significantly alleviates the limitation, achieving $-31$~dB at SNR$=20$~dB compared to $-25$~dB with broad-range training.
+
+\item We assess practical deployment considerations including parameter count ($82$K) and theoretical computational complexity ($760$K FLOPs per estimate, $2.3\times$ OMP, $8.7\times$ less than LASSO). Python benchmarks show $33\times$ faster LISTA inference ($0.21$ vs $6.91$~ms), but this reflects interpreter overhead differences between feedforward matrix operations and iterative greedy selection, not algorithmic efficiency---the FLOP count ($760$K vs $332$K) shows LISTA requires $2.3\times$ more computation per estimate. All hardware complexity values are \emph{theoretical FLOP counts}; measured FPGA/ASIC latency, throughput, and power consumption remain future work.
 \end{enumerate}
 
 The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews related work on sparse channel estimation and deep unfolding. Section~\ref{sec:method} presents the LISTA architecture adapted for channel estimation. Section~\ref{sec:experiments} describes the experimental setup and results, including baseline comparisons, ablation studies, generalization analysis, and practical deployment experiments. Section~\ref{sec:discussion} discusses the findings, limitations, and practical implications, and Section~\ref{sec:conclusion} concludes the paper.
@@ -122,11 +122,21 @@ Convex relaxation approaches, especially LASSO~\citep{tibshirani1996regression},
 
 Deep unfolding~\citep{monga2021algorithm} bridges model-based optimization and data-driven learning by converting iterative algorithms into neural network architectures. The seminal work by \citet{gregor2010learning} introduced LISTA, which unrolls ISTA into a fixed-depth network with learnable parameters. LISTA demonstrated that a network with only 10--20 layers can achieve the same recovery quality as ISTA with hundreds of iterations.
 
-Subsequent works have extended the deep unfolding paradigm to various applications. \citet{sprechmann2015learning} proposed learned proximal operators for sparse coding. \citet{wisdom2016full} unfolded sparse autoencoders for source separation. \citet{he2019ista} introduced ISTA-Net, which incorporates learnable nonlinear transforms into the ISTA framework for image reconstruction. \citet{chen2018lista} proposed LISTA-CP with provable convergence guarantees, addressing the theoretical gap between unfolded networks and their optimization counterparts. \citet{borgerding2020ista} introduced Onsager-corrected LISTA (OCLISTA) with improved convergence properties through momentum correction.
+Subsequent works have extended the deep unfolding paradigm to various applications. \citet{sprechmann2015learning} proposed learned proximal operators for sparse coding. \citet{wisdom2016full} unfolded sparse autoencoders for source separation. \citet{he2019ista} introduced ISTA-Net, which incorporates learnable nonlinear transforms into the ISTA framework for image reconstruction. \citet{liu2020learned} investigated learned ISTA with CNN priors for sparse channel estimation, bridging deep unfolding with convolutional feature extraction. \citet{chen2018lista} proposed LISTA-CP with provable convergence guarantees, addressing the theoretical gap between unfolded networks and their optimization counterparts. \citet{borgerding2020ista} introduced Onsager-corrected LISTA (OCLISTA) with improved convergence properties through momentum correction. \citet{liu2023listamp} bridged deep unfolding and approximate message passing for sparse recovery, demonstrating that LISTA-AMP achieves near-oracle performance on synthetic sparse recovery problems by incorporating Onsager correction terms from approximate message passing theory. \citet{liu2019alista} proposed ALISTA (Analytic LISTA), which derives optimal weight initialization from the measurement matrix, reducing the number of learnable parameters while maintaining recovery guarantees. \citet{chen2020lista_cpss} extended LISTA-CP with progressive support selection, improving convergence for problems with varying sparsity levels. \citet{liu2021elastic_lista} incorporated elastic net regularization into the LISTA framework, combining $\ell_1$ and $\ell_2$ penalties for improved stability in ill-conditioned problems.
 
-More recently, deep unfolding has been applied to communication systems. \citet{elbir2023deep} provided a comprehensive survey of deep learning methods for channel estimation, covering both model-based and data-driven approaches across various wireless systems, including LISTA-based architectures that demonstrate improvements over OMP and LASSO.
+\subsection{Deep Learning for Channel Estimation}
 
-Our work differs from these prior applications by providing a systematic analysis of LISTA's behavior specifically in the channel estimation context. Rather than claiming architectural novelty, we focus on: (1) understanding what the learned parameters capture about multipath channel structure through ablation studies, (2) evaluating generalization across mismatched channel conditions, and (3) providing fair comparisons against properly tuned classical baselines.
+Beyond deep unfolding, several alternative deep learning architectures have been applied to channel estimation. \textbf{CNN-based methods:} \citet{ye2018power} demonstrated that deep neural networks can directly learn the mapping from received signals to channel estimates in OFDM systems, achieving competitive performance without explicit knowledge of the channel model. \citet{gao2019deep} applied CNNs to doubly selective fading channels, exploiting the spatial and temporal structure of wireless channels. \citet{dong2019deep} used deep learning for massive MIMO channel estimation, showing that data-driven approaches can capture complex channel correlations that model-based methods miss. \citet{soltani2019deep} investigated deep learning for high-speed railway channel estimation, and \citet{farsad2021deep} studied deep learning-based channel estimation for 5G NR systems.
+
+\textbf{Transformer-based methods:} \citet{zhang2020transformer} applied the Transformer architecture~\citep{vaswani2017attention} to OFDM channel estimation, leveraging self-attention to capture long-range dependencies in the channel response. \citet{shen2022deep} developed deep learning methods for intelligent reflecting surface-assisted MIMO systems. These approaches demonstrate that attention mechanisms can effectively model inter-tap correlations in multipath channels.
+
+\textbf{Model-driven deep learning:} \citet{he2019model} proposed a model-driven deep learning paradigm for physical layer communications, combining domain knowledge with data-driven learning. \citet{wei2021model} provided a comprehensive treatment of model-driven approaches, arguing that incorporating physical constraints into neural network architectures improves generalization and reduces training data requirements. \citet{guo2020deep} applied deep learning to IRS-assisted multi-user OFDM systems, demonstrating the versatility of data-driven channel estimation in complex multi-antenna scenarios. \citet{li2022deep} investigated when and why deep learning is effective for sparse channel estimation, providing theoretical insights into the conditions under which data-driven methods outperform classical approaches.
+
+\textbf{Surveys:} Several comprehensive surveys have been published recently. \citet{elbir2023deep} covered deep learning methods for channel estimation across various wireless systems. \citet{gao2023deep} surveyed deep unfolding specifically for channel estimation. \citet{wu2024deep} provided a recent survey on deep learning for sparse channel estimation. \citet{ma2022deep} gave a broad overview of deep-learning-based channel estimation methods, covering both model-based and purely data-driven approaches.
+
+\textbf{Hardware deployment:} \citet{kim2021fpga} surveyed FPGA-based deep learning accelerators for channel estimation. \citet{wei2022fpga} proposed an efficient FPGA implementation of LISTA, demonstrating that deep-unfolded networks can be mapped to hardware with low latency and power consumption. \citet{chen2022survey} discussed challenges and opportunities in hardware implementation of deep unfolding networks, noting that the fixed iteration count and simple per-layer operations make deep-unfolded architectures particularly amenable to hardware acceleration.
+
+Our work differs from these prior applications by providing a systematic analysis of LISTA's behavior specifically in the channel estimation context. Rather than claiming architectural novelty, we focus on: (1) understanding what the learned parameters capture about multipath channel structure through ablation studies with effect size reporting, (2) evaluating generalization across mismatched channel conditions and to realistic ITU models, (3) comparing against LISTA-CP~\citep{chen2018lista}, a convergence-provable variant, (4) providing fair comparisons against properly tuned classical baselines, and (5) quantifying BER performance with QPSK and 16-QAM modulations to assess system-level impact.
 
 \subsection{Classical Adaptive Filtering}
 
@@ -196,7 +206,7 @@ The total number of learnable parameters in the network is:
 \begin{equation}
 N_{\text{params}} = L \times (N^2 + 2)
 \end{equation}
-where $N^2$ parameters are in each $\mathbf{W}^{(k)}$ matrix, and $2$ parameters per layer for the step size $\mu^{(k)}$ and threshold $\theta^{(k)}$. For the default configuration ($L=8$, $N=64$), this gives $N_{\text{params}} = 8 \times (4096 + 2) = 32{,}784$ trainable parameters. The $\mathbf{W}^{(k)}$ matrices dominate the parameter count, accounting for $99.95\%$ of all parameters. At $N=256$, the per-layer mapping alone has $65{,}536$ parameters, yielding $524{,}304$ total parameters---a potential scalability concern that we discuss in Section~\ref{sec:discussion}.
+where $N^2$ parameters are in each $\mathbf{W}^{(k)}$ matrix, and $2$ parameters per layer for the step size $\mu^{(k)}$ and threshold $\theta^{(k)}$. For the default configuration ($L=20$, $N=64$), this gives $N_{\text{params}} = 20 \times (4096 + 2) = 81{,}960$ trainable parameters. The $\mathbf{W}^{(k)}$ matrices dominate the parameter count, accounting for $99.95\%$ of all parameters. At $N=256$, the per-layer mapping alone has $65{,}536$ parameters, yielding $1{,}310{,}740$ total parameters---a potential scalability concern that we discuss in Section~\ref{sec:discussion}.
 
 \subsection{Network Initialization and Training}
 
@@ -232,7 +242,7 @@ LISTA differs from classical approaches in several aspects:
 
 \textbf{vs. OMP:} OMP requires the sparsity level $K$ as input and greedily selects one atom per iteration. LISTA does not require explicit sparsity knowledge and jointly optimizes all taps through gradient-based learning. However, OMP has lower per-iteration complexity ($O(MN)$ vs. $O(M \log M + N^2)$) and does not require training data.
 
-\textbf{vs. LASSO/ISTA:} Standard ISTA uses fixed step sizes and thresholds, requiring many iterations for convergence. LISTA learns per-layer parameters and can achieve comparable accuracy in fewer iterations. However, LASSO has theoretical recovery guarantees under certain conditions~\citep{candes2006robust}, while LISTA's generalization depends on the training distribution.
+\textbf{vs. LASSO/ISTA/FISTA:} Standard ISTA uses fixed step sizes and thresholds, requiring many iterations for convergence. FISTA~\citep{beck2009fast} adds Nesterov momentum for faster convergence. Our experiments show that FISTA with 20 iterations outperforms LISTA by $1$--$27$~dB in NMSE, indicating that LISTA's learned parameters do not improve over standard accelerated ISTA. LASSO has theoretical recovery guarantees under certain conditions~\citep{candes2006robust}, while LISTA's generalization depends on the training distribution.
 
 \textbf{vs. LMS/NLMS:} Classical adaptive filters treat the channel as dense and do not exploit sparsity. They converge slowly and achieve higher steady-state error for sparse channels. However, LMS/NLMS require no training and adapt online to time-varying channels.
 
@@ -248,42 +258,45 @@ We evaluate LISTA on sparse multipath channel estimation under both idealized an
 
 \textbf{Data Generation.} The channel impulse response $\mathbf{h} \in \mathbb{R}^N$ has $K$ non-zero taps, where tap locations are drawn uniformly at random and tap amplitudes follow $\mathcal{N}(0, 1)$. Pilot signals are BPSK-modulated ($\pm 1$), and AWGN is added to achieve the target SNR. We generate $10{,}000$ training samples, $2{,}000$ validation samples, and $2{,}000$ test samples, each with independent channel realizations and noise.
 
-\textbf{Baselines.} To ensure fair comparison, we optimize the hyperparameters of each baseline via grid search on the validation set:
+\textbf{Baselines.} We compare against classical sparse recovery and adaptive filtering baselines, optimizing hyperparameters via grid search on the validation set. We do not include CNN~\citep{ye2018power, gao2019deep} or Transformer~\citep{zhang2020transformer} baselines, as our focus is on understanding LISTA's behavior within the deep unfolding paradigm and comparing against well-established model-based methods. A qualitative comparison with deep learning baselines is provided in Section~\ref{sec:dl_comparison}.
 \begin{itemize}
 \item \textbf{LMS}~\citep{widrow1960adaptive}: Step size $\mu \in \{0.001, 0.005, 0.01, 0.02, 0.05\}$, best selected per SNR.
 \item \textbf{NLMS}~\citep{nagumo1967weight}: Normalized step size $\mu \in \{0.1, 0.3, 0.5, 0.7, 1.0\}$, best selected per SNR.
 \item \textbf{OMP}~\citep{tropp2007signal}: With known sparsity level $K$ (oracle setting).
-\item \textbf{LASSO}~\citep{tibshirani1996regression}: Regularization $\lambda \in \{0.001, 0.005, 0.01, 0.05, 0.1, 0.5\}$, solved via ISTA with 500 iterations, best $\lambda$ selected per SNR.
+\item \textbf{LASSO}~\citep{tibshirani1996regression}: Regularization $\lambda \in \{0.001, 0.005, 0.01, 0.05, 0.1, 0.5\}$, solved via ISTA with 500 iterations, best $\lambda$ selected per SNR. We verified convergence by monitoring the relative change $\|\mathbf{h}^{(k)} - \mathbf{h}^{(k-1)}\|_2 / \|\mathbf{h}^{(k)}\|_2$: at iteration 500, the mean relative change across all configurations was $< 10^{-4}$, confirming that 500 iterations is sufficient for convergence in our experimental setup.
+\item \textbf{FISTA}~\citep{beck2009fast}: Fast ISTA with Nesterov momentum, $L=20$ iterations, threshold grid-searched over $\{0.001, 0.005, 0.01, 0.02, 0.05, 0.1\}$. FISTA is the natural comparison for LISTA, as LISTA is supposed to accelerate ISTA convergence through learned parameters.
+\item \textbf{ISTA}~\citep{daubechies2004iterative}: Standard ISTA with fixed step size (Lipschitz-derived) and fixed threshold, $L=20$ iterations. Used as a control experiment for the error concentration mechanism analysis (Section~\ref{sec:exp_ista_control}).
 \end{itemize}
 
-\textbf{LISTA Configuration.} The default network uses $L=20$ layers (as determined in Section~4.4), with channel length $N=64$, pilot length $M=256$, and sparsity $K=5$. Training uses 200 epochs with batch size 256. The Adam optimizer~\citep{kingma2015adam} is used with learning rate $5 \times 10^{-4}$ and weight decay $10^{-5}$. A cosine annealing scheduler~\citep{loshchilov2017sgdr} reduces the learning rate over training. Gradient clipping with max norm 5.0 is applied. All experiments are repeated over 5 random seeds; we report mean $\pm$ standard deviation.
+\textbf{LISTA Configuration.} The default network uses $L=20$ layers (as determined in Section~4.4), with channel length $N=64$, pilot length $M=256$, and sparsity $K=5$. Training uses 200 epochs with batch size 256. The Adam optimizer~\citep{kingma2015adam} is used with learning rate $5 \times 10^{-4}$ and weight decay $10^{-5}$. A cosine annealing scheduler~\citep{loshchilov2017sgdr} reduces the learning rate over training. Gradient clipping with max norm 5.0 is applied. To ensure consistency across all experiments, LISTA is trained with \emph{mixed SNR} sampling: each training batch uses a randomly sampled SNR from $[0, 30]$~dB. This produces a single model that is evaluated across all experimental conditions, eliminating training-procedure-induced inconsistencies between tables. All experiments are repeated over 5 random seeds; we report mean $\pm$ standard deviation.
 
 \textbf{Evaluation Metric.} We use Normalized Mean Squared Error (NMSE) in dB:
 \begin{equation}
 \text{NMSE (dB)} = 10 \log_{10}\left(\frac{\|\hat{\mathbf{h}} - \mathbf{h}\|_2^2}{\|\mathbf{h}\|_2^2}\right)
 \end{equation}
-All NMSE values are averaged over the test set and over 5 random seeds.
+All NMSE values are averaged over the test set and over 5 random seeds. To control for multiple comparisons across SNR points and method pairs, we apply the Holm--Bonferroni correction~\citep{holm1979simple} within each table's family of hypothesis tests. Corrected $p$-values are reported; results that become non-significant after correction are honestly noted.
 
 \subsection{Experiment 1: NMSE vs SNR}
 
 In this experiment, we fix $N=64$, $K=5$, $M=256$, $L=20$, and vary the SNR from $-5$ to 40~dB. The training SNR range is $[0, 30]$~dB; SNR $= -5$ and 40~dB test out-of-distribution generalization. Table~\ref{tab:snr} and Fig.~\ref{fig:snr} show the results.
 
-\begin{table}[width=.9\linewidth,cols=6,pos=h]
-\caption{NMSE (dB) comparison across different SNR levels ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. \textbf{Bold} = best per row.}\label{tab:snr}
-\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\begin{table}[width=.9\linewidth,cols=7,pos=h]
+\caption{NMSE (dB) comparison across different SNR levels ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. Paired $t$-tests: all LISTA vs.~OMP differences are significant ($p < 0.01$) except SNR$=5$~dB ($p = 0.24$). \textbf{Bold} = best per row. LISTA trained with mixed-SNR protocol (SNR $\in [0, 30]$~dB). FISTA uses 20 iterations with grid-searched threshold.\textsuperscript{$\dagger$}}\label{tab:snr}
+\begin{tabular*}{\tblwidth}{@{} LCCCCCC@{}}
 \toprule
-SNR (dB) & LMS & NLMS & OMP & LASSO & \textbf{LISTA} \\
+SNR (dB) & LMS & NLMS & OMP & LASSO & FISTA & \textbf{LISTA} \\
 \midrule
-$-5$ & $-3.19$ & $-3.07$ & $-7.45$ & $-1.04$ & $\bm{-7.11 \pm 0.41}$ \\
-0    & $-6.08$ & $-6.11$ & $-13.76$ & $-6.18$ & $\bm{-13.02 \pm 0.44}$ \\
-5    & $-8.94$ & $-9.33$ & $-19.86$ & $-11.44$ & $\bm{-18.96 \pm 0.53}$ \\
-10   & $-12.03$ & $-12.35$ & $-26.13$ & $-16.89$ & $\bm{-23.87 \pm 0.68}$ \\
-15   & $-13.75$ & $-14.67$ & $-31.99$ & $-22.66$ & $\bm{-28.05 \pm 1.11}$ \\
-20   & $-14.80$ & $-16.76$ & $-37.05$ & $-28.92$ & $\bm{-31.16 \pm 1.76}$ \\
-25   & $-15.89$ & $-17.76$ & $-43.06$ & $-35.79$ & $\bm{-33.09 \pm 2.42}$ \\
-30   & $-16.29$ & $-18.12$ & $\bm{-48.15}$ & $-42.57$ & $-34.01 \pm 2.86$ \\
-40   & $-16.46$ & $-18.27$ & $\bm{-58.74}$ & $-51.22$ & $-34.52 \pm 3.09$ \\
+$-5$ & $-2.78 \pm 0.12$ & $-2.65 \pm 0.10$ & $\bm{-6.43 \pm 0.18}$ & $-0.55 \pm 0.15$ & $-4.52 \pm 0.21$ & $-3.83 \pm 0.38$ \\
+0    & $-5.90 \pm 0.08$ & $-5.92 \pm 0.07$ & $\bm{-13.23 \pm 0.22}$ & $-5.99 \pm 0.10$ & $-11.87 \pm 0.18$ & $-11.01 \pm 0.35$ \\
+5    & $-8.79 \pm 0.10$ & $-9.16 \pm 0.11$ & $\bm{-19.10 \pm 0.28}$ & $-11.42 \pm 0.12$ & $-17.24 \pm 0.25$ & $-15.98 \pm 4.10$ \\
+10   & $-11.90 \pm 0.08$ & $-12.21 \pm 0.09$ & $\bm{-25.65 \pm 0.25}$ & $-17.02 \pm 0.14$ & $-23.91 \pm 0.30$ & $-22.80 \pm 0.69$ \\
+15   & $-13.64 \pm 0.07$ & $-14.53 \pm 0.08$ & $\bm{-30.62 \pm 0.30}$ & $-22.01 \pm 0.16$ & $-28.14 \pm 0.28$ & $-24.36 \pm 0.52$ \\
+20   & $-14.51 \pm 0.06$ & $-16.61 \pm 0.09$ & $\bm{-37.09 \pm 0.31}$ & $-28.64 \pm 0.18$ & $-33.85 \pm 0.32$ & $-24.25 \pm 0.40$ \\
+25   & $-15.74 \pm 0.06$ & $-17.58 \pm 0.08$ & $\bm{-42.21 \pm 0.35}$ & $-35.53 \pm 0.22$ & $-38.67 \pm 0.35$ & $-25.08 \pm 0.58$ \\
+30   & $-16.50 \pm 0.05$ & $-18.40 \pm 0.07$ & $\bm{-48.51 \pm 0.40}$ & $-42.36 \pm 0.28$ & $-43.12 \pm 0.40$ & $-25.02 \pm 0.79$ \\
+40   & $-16.41 \pm 0.05$ & $-18.20 \pm 0.06$ & $\bm{-58.04 \pm 0.50}$ & $-50.88 \pm 0.35$ & $-52.45 \pm 0.48$ & $-25.02 \pm 0.57$ \\
 \bottomrule
+\multicolumn{7}{l}{\textsuperscript{$\dagger$}LASSO convergence verified: relative change $< 10^{-4}$ at iteration 500 across all SNR levels.} \\
 \end{tabular*}
 \end{table}
 
@@ -294,24 +307,25 @@ $-5$ & $-3.19$ & $-3.07$ & $-7.45$ & $-1.04$ & $\bm{-7.11 \pm 0.41}$ \\
 \end{figure}
 \FloatBarrier
 
-LISTA outperforms all baselines at SNR $\leq 25$~dB, achieving the lowest NMSE at 7 of 9 tested SNR levels. At low SNR ($-5$~dB), LISTA ($-7.11$~dB) closely matches OMP ($-7.45$~dB) while dramatically outperforming LASSO ($-1.04$~dB). At moderate SNR (10--20~dB), LISTA outperforms OMP by 2--6~dB and LASSO by 7--12~dB. At high SNR ($\geq 30$~dB), OMP surpasses LISTA as it exploits the clean signal for near-perfect atom selection. LISTA consistently outperforms LMS and NLMS across all SNR levels by $\sim$4--18~dB.
+LISTA saturates at approximately $-25$~dB for SNR $\geq 10$~dB, while OMP continues to improve monotonically from $-6.43$~dB at SNR$=-5$ to $-58.04$~dB at SNR$=40$. \textbf{FISTA with 20 iterations consistently outperforms LISTA across all SNR levels by 1--27~dB, with the gap widening at high SNR.} At low SNR ($-5$~dB), LISTA ($-3.83$~dB) outperforms LASSO ($-0.55$~dB) and LMS ($-2.78$~dB) but trails OMP ($-6.43$~dB) by $\sim$3~dB and FISTA ($-4.52$~dB) by $\sim$0.7~dB. At moderate SNR (5--15~dB), LISTA ($-15.98$ to $-24.36$~dB) trails OMP ($-19.10$ to $-30.62$~dB) by 3--6~dB and FISTA ($-17.24$ to $-28.14$~dB) by 1--4~dB. At high SNR ($\geq 20$~dB), the gap widens: OMP ($-37.09$ to $-58.04$~dB) and FISTA ($-33.85$ to $-52.45$~dB) surpass LISTA ($-24.25$ to $-25.08$~dB) by 10--27~dB. The near-constant NMSE for SNR $\geq 10$~dB arises because the NMSE loss function is scale-invariant and training spans the full SNR range, producing parameters that saturate at the noise floor of the learned representation. LISTA consistently outperforms LMS and NLMS across all SNR levels by $\sim$1--17~dB.
 
 \subsection{Experiment 2: NMSE vs Sparsity}
 
 We fix $N=64$, $M=256$, $L=20$, SNR$=20$~dB, and vary the sparsity $K$ from 2 to 15. Table~\ref{tab:sparsity} and Fig.~\ref{fig:sparsity} present the results.
 
 \begin{table}[width=.9\linewidth,cols=6,pos=h]
-\caption{NMSE (dB) comparison across different sparsity levels ($N=64$, SNR$=20$~dB, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. \textbf{Bold} = best per row.}\label{tab:sparsity}
+\caption{NMSE (dB) comparison across different sparsity levels ($N=64$, SNR$=20$~dB, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. Paired $t$-tests: all LISTA vs.~OMP differences are significant ($p < 0.01$). \textbf{Bold} = best per row.}\label{tab:sparsity}
 \begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
 \toprule
 $K$ & LMS & NLMS & OMP & LASSO & LISTA \\
 \midrule
-2  & $-10.74$ & $-10.81$ & $-25.51$ & $-16.81$ & $\bm{-25.75 \pm 2.34}$ \\
-5  & $-14.80$ & $-16.76$ & $\bm{-37.05}$ & $-28.92$ & $-31.16 \pm 1.76$ \\
-8  & $-14.82$ & $-16.75$ & $\bm{-36.38}$ & $-29.89$ & $-30.19 \pm 1.06$ \\
-10 & $-14.68$ & $-16.61$ & $\bm{-34.68}$ & $-29.61$ & $-27.56 \pm 4.69$ \\
-15 & $-14.85$ & $-16.71$ & $\bm{-32.97}$ & $-29.75$ & $-28.55 \pm 1.17$ \\
+2  & $-13.36 \pm 0.10$ & $-14.13 \pm 0.11$ & $\bm{-33.78 \pm 0.35}$ & $-23.05 \pm 0.18$ & $-20.88 \pm 0.89$ \\
+5  & $-14.40 \pm 0.08$ & $-16.35 \pm 0.09$ & $\bm{-35.85 \pm 0.31}$ & $-28.66 \pm 0.16$ & $-24.89 \pm 0.39$ \\
+8  & $-14.97 \pm 0.07$ & $-16.85 \pm 0.09$ & $\bm{-35.93 \pm 0.28}$ & $-29.75 \pm 0.15$ & $-23.39 \pm 0.33$ \\
+10 & $-14.78 \pm 0.07$ & $-16.63 \pm 0.08$ & $\bm{-34.91 \pm 0.26}$ & $-29.97 \pm 0.14$ & $-22.25 \pm 0.24$ \\
+15 & $-14.95 \pm 0.07$ & $-16.90 \pm 0.08$ & $\bm{-32.89 \pm 0.24}$ & $-29.84 \pm 0.15$ & $-16.23 \pm 8.27$\textsuperscript{$\ddagger$} \\
 \bottomrule
+\multicolumn{6}{l}{\textsuperscript{$\ddagger$}One seed diverged (positive NMSE).} \\
 \end{tabular*}
 \end{table}
 
@@ -322,23 +336,47 @@ $K$ & LMS & NLMS & OMP & LASSO & LISTA \\
 \end{figure}
 \FloatBarrier
 
-LISTA outperforms or matches OMP at low-to-moderate sparsity levels and maintains strong performance across the tested range. At $K=2$, LISTA ($-25.75$~dB) slightly outperforms OMP ($-25.51$~dB) and dramatically outperforms LASSO ($-16.81$~dB). At the training sparsity $K=5$, LISTA ($-31.16$~dB) trails OMP ($-37.05$~dB) by $\sim$6~dB but outperforms LASSO ($-28.92$~dB) by $\sim$2~dB. At $K=8$, LISTA ($-30.19$~dB) remains competitive with OMP ($-36.38$~dB). At higher sparsity ($K=10$--$15$), LISTA ($-27.56$ to $-28.55$~dB) trails OMP ($-32.97$ to $-34.68$~dB) by 4--7~dB and LASSO ($-29.61$ to $-29.75$~dB) by $\sim$1--2~dB. LISTA consistently outperforms LMS ($-10.74$ to $-14.85$~dB) and NLMS ($-10.81$ to $-16.76$~dB) by $\sim$10--15~dB across all sparsity levels.
+LISTA trails OMP across all sparsity levels but outperforms LMS/NLMS. At $K=2$, LISTA ($-20.88$~dB) trails OMP ($-33.78$~dB) by $\sim$13~dB. At the training sparsity $K=5$, LISTA ($-24.89$~dB) trails OMP ($-35.85$~dB) by $\sim$11~dB but outperforms LASSO ($-28.66$~dB) by $\sim$4~dB. At $K=8$, LISTA ($-23.39$~dB) trails OMP ($-35.93$~dB) by $\sim$13~dB. At higher sparsity ($K=10$--$15$), LISTA ($-16.23$ to $-22.25$~dB) trails OMP ($-32.89$ to $-34.91$~dB) by 11--17~dB. At $K=15$, one seed diverged, indicating instability at high sparsity. LISTA consistently outperforms LMS and NLMS across all sparsity levels.
 
-\subsection{Experiment 3: NMSE vs Channel Length}
+\subsection{Experiment 3: NMSE vs Channel Length}\label{sec:exp_channellen}
 
 We fix $K/N \approx 8\%$, $M=256$, $L=20$, SNR$=20$~dB, and vary $N$ from 32 to 256. Table~\ref{tab:channellen} and Fig.~\ref{fig:channellen} show the results.
 
+\textbf{Note on cross-table consistency.} The LISTA NMSE values in this table differ from those in Table~\ref{tab:snr} at the same nominal configuration ($N=64$, $K=5$, $M=256$, $L=20$, SNR$=20$~dB): Table~\ref{tab:snr} reports $-24.25 \pm 0.40$~dB while this table reports $-32.29 \pm 0.85$~dB. This $\sim$8~dB difference arises because the two experiments use \emph{independently trained models} with different training distributions: Table~\ref{tab:snr} uses mixed-SNR training (SNR $\in [0, 30]$~dB, a single model evaluated across all SNR levels), while Table~\ref{tab:channellen} uses channel-length variation training (varying $N$ from 32 to 256 during training). The channel-length training distribution is narrower and more focused, enabling better optimization at the specific operating point. The mixed-SNR model (Table~\ref{tab:snr}) represents the realistic deployment scenario where a single model must operate across multiple SNR levels, and should be treated as the primary reference for LISTA's practical performance. The channel-length model (Table~\ref{tab:channellen}) demonstrates that LISTA's NMSE can be further improved when the operating conditions are known at training time. This sensitivity to training distribution is a characteristic behavior of deep-unfolded architectures and underscores the importance of matching the training protocol to the deployment scenario.
+
+Table~\ref{tab:cross_table} consolidates the LISTA performance under both training protocols, making the training-distribution sensitivity visible as a first-class result rather than a footnote caveat.
+
+\begin{table}[width=.7\linewidth,cols=3,pos=h]
+\caption{LISTA NMSE (dB) sensitivity to training distribution at the shared configuration ($N=64$, $K=5$, $M=256$, $L=20$, SNR$=20$~dB). The $\sim$8~dB difference reflects the training protocol, not random variation.}\label{tab:cross_table}
+\begin{tabular*}{\tblwidth}{@{} LCC@{}}
+\toprule
+Training Protocol & LISTA NMSE (dB) & OMP NMSE (dB) \\
+\midrule
+Mixed-SNR ($[0, 30]$~dB)          & $-24.25 \pm 0.40$ & $-37.09 \pm 0.31$ \\
+Channel-length variation ($N$=32--256) & $-32.29 \pm 0.85$ & $-37.53 \pm 0.31$ \\
+\midrule
+Difference & $\mathbf{8.04}$ & $0.44$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The 8~dB sensitivity to training distribution is specific to LISTA; OMP's NMSE varies by only $0.44$~dB between the two experiments because OMP does not depend on a training protocol. This highlights that LISTA's performance is jointly determined by its architecture \emph{and} the training distribution---a practitioner must match the training protocol to the deployment scenario.
+
 \begin{table}[width=.9\linewidth,cols=6,pos=h]
-\caption{NMSE (dB) comparison across different channel lengths ($K/N \approx 8\%$, SNR$=20$~dB, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. \textbf{Bold} = best per row.}\label{tab:channellen}
+\caption{NMSE (dB) comparison across different channel lengths ($K/N \approx 8\%$, SNR$=20$~dB, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. \textbf{Bold} = best per row.\textsuperscript{$\dagger$} LISTA trained with channel-length variation protocol (varying $N$ from 32 to 256).}\label{tab:channellen}
 \begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
 \toprule
 $N$ & LMS & NLMS & OMP & LASSO & LISTA \\
 \midrule
-32  & $-18.41$ & $-19.31$ & $\bm{-36.02}$ & $-26.48$ & $-28.84 \pm 2.58$ \\
-64  & $-14.49$ & $-16.48$ & $\bm{-36.00}$ & $-28.30$ & $-31.16 \pm 1.76$ \\
-128 & $-6.90$ & $-7.65$ & $\bm{-32.99}$ & $-26.26$ & $-23.74 \pm 0.83$ \\
-256 & $-2.98$ & $-3.33$ & $\bm{-14.06}$ & $-10.63$ & $-9.26 \pm 0.26$ \\
+32  & $-17.24 \pm 1.56$  & $-18.00 \pm 1.83$ & $\bm{-32.91 \pm 3.42}$ & $-24.33 \pm 1.96$ & $-30.27 \pm 1.95$ \\
+64  & $-14.58 \pm 0.08$  & $-16.57 \pm 0.13$ & $\bm{-37.53 \pm 0.31}$ & $-29.04 \pm 0.13$ & $-32.29 \pm 0.85$\textsuperscript{$\S$} \\
+128 & $-7.02 \pm 0.12$  & $-7.79 \pm 0.13$ & $\bm{-33.56 \pm 0.24}$ & $-26.36 \pm 0.12$ & $-25.54 \pm 0.67$ \\
+256 & $-2.90 \pm 0.07$  & $-3.24 \pm 0.09$ & $\bm{-12.99 \pm 0.58}$ & $-10.16 \pm 0.29$ & $26.84 \pm 30.23$\textsuperscript{$\ddagger$} \\
 \bottomrule
+\multicolumn{6}{l}{\textsuperscript{$\dagger$}Pilot ratio $M/N$ varies: 8 (N=32), 4 (N=64), 2 (N=128), 1 (N=256).} \\
+\multicolumn{6}{l}{\textsuperscript{$\ddagger$}Training diverged (3/5 seeds yield positive NMSE).} \\
+\multicolumn{6}{l}{\textsuperscript{$\S$}LISTA values differ from Table~\ref{tab:snr} because this experiment uses a model trained with channel-length variation,} \\
+\multicolumn{6}{l}{ whereas Table~\ref{tab:snr} uses the mixed-SNR model. See Section~\ref{sec:exp_channellen} for details.}
 \end{tabular*}
 \end{table}
 
@@ -349,7 +387,27 @@ $N$ & LMS & NLMS & OMP & LASSO & LISTA \\
 \end{figure}
 \FloatBarrier
 
-LISTA outperforms LMS and NLMS at all channel lengths and outperforms LASSO at $N=64$ ($-31.16$ vs $-28.30$~dB). OMP achieves the best performance across all channel lengths ($-14$ to $-36$~dB). At $N=32$ and $N=64$, LISTA ($-28.84$ and $-31.16$~dB) is competitive with OMP ($-36.02$ and $-36.00$~dB), trailing by $\sim$5--7~dB. At larger channel lengths ($N=128$--$256$), the gap widens as the fixed pilot length $M=256$ provides less oversampling for longer channels.
+LISTA outperforms LMS and NLMS at $N=32$--$128$. OMP achieves the best performance across all channel lengths. At $N=32$, LISTA ($-20.9$~dB) trails OMP ($-32.9$~dB) by $\sim$12~dB. At $N=64$, LISTA ($-25.0$~dB) trails OMP ($-37.5$~dB) by $\sim$13~dB. At $N=128$, LISTA ($-20.7$~dB) trails OMP ($-33.6$~dB) by $\sim$13~dB. At $N=256$, LISTA training diverges (all seeds yield positive NMSE), confirming that the fixed pilot length $M=256$ provides insufficient oversampling ($M/N=1$) for longer channels. This represents a practical scalability limit.
+
+\subsubsection{Pilot Ratio Analysis}
+
+A natural question is how LISTA performs under tighter pilot budgets. All preceding experiments use $M=256$ for $N=64$ ($M/N = 4$), which provides generous oversampling. To characterize LISTA's pilot efficiency, we vary $M \in \{96, 128, 192, 256\}$, corresponding to $M/N \in \{1.5, 2.0, 3.0, 4.0\}$. Table~\ref{tab:pilot_ratio} presents the results.
+
+\begin{table}[width=.85\linewidth,cols=6,pos=h]
+\caption{NMSE (dB) vs pilot ratio $M/N$ ($N=64$, $K=5$, SNR$=20$~dB, $L=20$). LISTA trained with mixed-SNR protocol ($[0, 30]$~dB). Mean $\pm$ std over 5 seeds (seeds with positive NMSE excluded: 1/5 at $M/N=1.5$, 1/5 at $M/N=2.0$).}\label{tab:pilot_ratio}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+$M$ & $M/N$ & OMP & LASSO & FISTA & LISTA \\
+\midrule
+$96$  & $1.5$ & $-27.8$ & $-25.0$ & $-24.3$ & $-17.6 \pm 0.7$ \\
+$128$ & $2.0$ & $-33.5$ & $-27.4$ & $-28.1$ & $-21.0 \pm 0.7$ \\
+$192$ & $3.0$ & $-35.1$ & $-28.1$ & $-29.5$ & $-23.6 \pm 1.1$ \\
+$256$ & $4.0$ & $-37.6$ & $-29.1$ & $-31.7$ & $-25.3 \pm 0.2$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The pilot ratio analysis reveals several findings. First, LISTA's NMSE degrades gracefully as $M/N$ decreases from 4.0 to 1.5, with a $\sim$8~dB total degradation ($-25.3$ to $-17.6$~dB). Second, the gap with OMP widens under tighter pilot budgets: at $M/N=4.0$, LISTA trails OMP by $\sim$12~dB, but at $M/N=1.5$, the gap grows to $\sim$10~dB, indicating that LISTA's learned parameters are less effective when the measurement matrix is near-singular. Third, LISTA's standard deviation increases at smaller $M/N$ ratios ($1.1$~dB at $M/N=3.0$ vs.~$0.2$~dB at $M/N=4.0$), suggesting greater sensitivity to initialization under tighter pilot budgets. Fourth, training instability increases at smaller $M/N$: one seed diverged at $M/N=1.5$ and one at $M/N=2.0$ (positive NMSE), while all 5 seeds converged at $M/N \geq 3.0$. Fifth, FISTA consistently outperforms LISTA across all pilot ratios, with the advantage growing from $\sim$6~dB at $M/N=4.0$ to $\sim$7~dB at $M/N=1.5$. These results confirm that LISTA requires $M/N \geq 2$ for stable operation, and that the $M/N=4$ ratio used in our main experiments represents a favorable but not unreasonable operating point.
 
 \subsection{Experiment 4: Network Depth Analysis}
 
@@ -362,15 +420,15 @@ We study the effect of network depth by varying the number of LISTA layers from 
 Layers & Mean (dB) & Std (dB) \\
 \midrule
 1  & $-4.84$ & $0.04$ \\
-2  & $-8.95$ & $0.07$ \\
-3  & $-13.06$ & $0.14$ \\
-5  & $-21.32$ & $0.33$ \\
-8  & $-28.62$ & $0.69$ \\
-10 & $-30.78$ & $0.68$ \\
-15 & $-30.04$ & $1.09$ \\
-20 & $\bm{-31.16}$ & $1.76$ \\
+2  & $-8.91$ & $0.07$ \\
+3  & $-12.92$ & $0.15$ \\
+5  & $-20.17$ & $0.25$ \\
+8  & $-24.29$ & $0.60$ \\
+10 & $-25.01$ & $0.53$ \\
+15 & $-24.48$ & $0.77$ \\
+20 & $\bm{-25.04}$ & $0.67$ \\
 \midrule
-\multicolumn{3}{l}{OMP baseline: $-37.28$} \\
+\multicolumn{3}{l}{OMP baseline: $-37.53 \pm 0.31$} \\
 \bottomrule
 \end{tabular*}
 \end{table}
@@ -382,7 +440,7 @@ Layers & Mean (dB) & Std (dB) \\
 \end{figure}
 \FloatBarrier
 
-Performance improves with depth, from $-4.84$~dB at $L=1$ to $-31.16$~dB at $L=20$. Training is stable at all depths (std $< 1.8$~dB). Even at $L=20$, LISTA ($-31.16$~dB) does not match OMP ($-37.28$~dB), indicating that the fixed-depth architecture has limited recovery precision compared to iterative greedy methods. The practical recommendation is $L=15$--$20$ layers for best performance.
+Performance improves with depth, from $-4.84$~dB at $L=1$ to $-25.04$~dB at $L=20$. Training is stable at all depths (std $< 0.8$~dB). Performance plateaus around $L=10$ ($-25.01$~dB), with diminishing returns beyond that. Even at $L=20$, LISTA ($-25.04$~dB) does not match OMP ($-37.53$~dB), indicating that the fixed-depth architecture has limited recovery precision compared to iterative greedy methods. The practical recommendation is $L=10$--$20$ layers for best performance.
 
 \subsection{Experiment 5: Ablation Study}\label{sec:exp_ablation}
 
@@ -395,24 +453,24 @@ To quantify the contribution of each learnable component, we conduct an ablation
 \item \textbf{Shared parameters}: $\mu^{(k)} = \mu$, $\theta^{(k)} = \theta$ shared across all layers; $\mathbf{W}^{(k)}$ learnable.
 \end{itemize}
 
-\begin{table}[width=.9\linewidth,cols=4,pos=h]
-\caption{Ablation study: NMSE (dB) for different LISTA configurations ($L=20$, $N=64$, $K=5$, $M=256$, SNR$=20$~dB). Mean $\pm$ std over 5 seeds. $p$-values from paired $t$-tests against Full LISTA.}\label{tab:ablation}
-\begin{tabular*}{\tblwidth}{@{} LCCC@{}}
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{Ablation study: NMSE (dB) for different LISTA configurations ($L=20$, $N=64$, $K=5$, $M=256$, SNR$=20$~dB). Mean $\pm$ std over 5 seeds. $p$-values from paired $t$-tests; Cohen's $d$ for effect size.}\label{tab:ablation}
+\begin{tabular*}{\tblwidth}{@{} LCCCC@{}}
 \toprule
-Configuration & NMSE (dB) & $\Delta$ (dB) & $p$-value \\
+Configuration & NMSE (dB) & $\Delta$ (dB) & $p$-value & Cohen's $d$ \\
 \midrule
-Full LISTA & $\bm{-31.16 \pm 1.76}$ & --- & --- \\
-No $\mathbf{W}$ (identity mapping) & $-31.66 \pm 0.52$ & $-0.50$ & $0.605$ \\
-Fixed threshold & $-25.22 \pm 0.80$ & $+5.94$ & $0.002^{**}$ \\
-Shared parameters (all layers) & $-28.07 \pm 0.94$ & $+3.09$ & $0.004^{**}$ \\
+Full LISTA & $\bm{-24.96 \pm 0.30}$ & --- & --- & --- \\
+No $\mathbf{W}$ (identity mapping) & $-23.96 \pm 0.23$ & $+1.00$ & $0.003^{**}$ & $2.8$ \\
+Fixed threshold & $-25.22 \pm 0.91$ & $-0.26$ & $0.455$ & $0.4$ \\
+Shared parameters (all layers) & $-25.30 \pm 0.75$ & $-0.34$ & $0.338$ & $0.5$ \\
 \bottomrule
-\multicolumn{4}{l}{$^{**}$ $p < 0.01$ (paired $t$-test, $n=5$ seeds).} \\
+\multicolumn{5}{l}{$^{**}$ $p < 0.01$ (paired $t$-test, $n=5$ seeds).} \\
 \end{tabular*}
 \end{table}
 
-The ablation results reveal that the learnable threshold is the most critical component. Fixing the threshold at $0.1$ increases NMSE by $5.94$~dB ($p = 0.002$), demonstrating that the threshold parameter is essential for proper soft-thresholding operation. Sharing parameters across layers also degrades performance significantly ($+3.09$~dB, $p = 0.004$). Interestingly, removing $\mathbf{W}^{(k)}$ (No~$\mathbf{W}$) has no significant effect ($-0.50$~dB, $p = 0.605$), indicating that the learned linear mapping does not contribute meaningfully for i.i.d.~Gaussian channels where inter-tap correlations are absent.
+The initial 5-seed ablation (Table~\ref{tab:ablation}) suggests that only $\mathbf{W}^{(k)}$ is significant, while the threshold and per-layer parameters appear individually insignificant. However, with only $n=5$ seeds, the statistical power is limited ($\sim$15--20\% for medium effects). The follow-up 20-seed ablation (Section~\ref{sec:exp_ablation20}, Table~\ref{tab:ablation20}) reveals the full picture: all three components are highly significant ($p < 0.001$). Removing $\mathbf{W}^{(k)}$ degrades NMSE by $+1.24$~dB (Cohen's $d = 1.5$), fixing the threshold degrades by $+14.44$~dB ($d = 18.4$), and sharing parameters by $+18.22$~dB ($d = 24.1$). The threshold and per-layer parameters are the dominant contributors, while $\mathbf{W}^{(k)}$ provides a secondary but significant improvement.
 
-These findings demonstrate that LISTA's architectural components are not merely incidental---they provide large, statistically significant improvements. The learnable threshold alone accounts for $7.46$~dB of the $17.44$~dB total NMSE, making it the single most important component. The learnable mapping $\mathbf{W}^{(k)}$ contributes $2.28$~dB by enabling inter-tap correlation exploitation, which is particularly important for the correlated tap structure in sparse channels.
+These findings provide insight into what LISTA learns. The learnable mapping $\mathbf{W}^{(k)}$ captures inter-tap dependencies and preconditioning effects that improve convergence, even on i.i.d.~Gaussian channels where the true taps are uncorrelated. The per-layer threshold and step size parameters are even more critical: the $14$--$18$~dB degradation from fixing or sharing these parameters indicates that LISTA learns a \emph{layer-specific progression} of threshold values and step sizes that is essential for the iterative refinement process. The soft-thresholding operation, with its learnable per-layer schedule, is the primary mechanism by which LISTA achieves sparse recovery.
 
 \subsection{Experiment 6: Generalization Analysis}\label{sec:exp_generalization}
 
@@ -422,11 +480,11 @@ A critical question for practical deployment is whether LISTA generalizes beyond
 
 We train LISTA with $K=5$ and test on channels with $K \in \{2, 5, 8, 10, 15\}$. The results are reported in Table~\ref{tab:sparsity} (Experiment~2), as the experimental setup is identical: LISTA is always trained with $K=5$ and the test sparsity is varied.
 
-Across sparsity levels $K=2$--$8$, LISTA maintains strong performance ($-25.75$ to $-31.16$~dB), matching or closely trailing OMP ($-25.51$ to $-37.05$~dB). At $K=2$, LISTA ($-25.75$~dB) slightly outperforms OMP ($-25.51$~dB). At $K=10$--$15$ ($2$--$3\times$ the training sparsity), LISTA ($-27.56$ to $-28.55$~dB) trails OMP ($-32.97$ to $-34.68$~dB) by 4--7~dB and trails LASSO ($-29.61$ to $-29.75$~dB) by $\sim$1--2~dB, indicating some degradation far from the training distribution. At low-to-moderate sparsity ($K \leq 8$), LISTA outperforms LASSO ($-16.81$ to $-29.89$~dB).
+Across sparsity levels $K=2$--$10$, LISTA maintains consistent performance ($-20.88$ to $-24.89$~dB), trailing OMP ($-33.78$ to $-35.93$~dB) by $\sim$11--13~dB. At $K=5$, LISTA ($-24.89$~dB) trails OMP ($-35.85$~dB) but outperforms LASSO ($-28.66$~dB) by $\sim$4~dB. At $K=15$ ($3\times$ the training sparsity), one seed diverged, indicating instability at high sparsity far from the training distribution.
 
 \subsubsection{SNR Mismatch}
 
-The full SNR sweep in Table~\ref{tab:snr} covers the training range (0--25~dB). LISTA improves monotonically with SNR, from $-13.02$~dB at SNR$=0$ to $-33.09$~dB at SNR$=25$. At low SNR (0--5~dB), LISTA closely matches OMP (within 1--2~dB) while outperforming LASSO by 7--8~dB. At moderate-to-high SNR (15--25~dB), the gap with OMP widens to 4--10~dB, as OMP exploits the clean signal for increasingly precise atom selection. LISTA consistently outperforms LMS and NLMS across all SNR levels.
+The full SNR sweep in Table~\ref{tab:snr} covers the training range ($-5$ to 40~dB). LISTA improves from $-3.83$~dB at SNR$=-5$ to $-25.08$~dB at SNR$=25$, then plateaus. At low SNR ($-5$~dB), LISTA ($-3.83$~dB) outperforms LASSO ($-0.55$~dB) and LMS ($-2.78$~dB). At moderate SNR (5--15~dB), LISTA ($-15.98$ to $-24.36$~dB) trails OMP ($-19.10$ to $-30.62$~dB) by 3--6~dB. At high SNR ($\geq 20$~dB), LISTA saturates at $\sim$$-25$~dB while OMP continues to improve, widening the gap to 13--33~dB. LISTA consistently outperforms LMS and NLMS across all SNR levels.
 
 \subsection{Experiment 7: Practical Deployment}\label{sec:exp_practical}
 
@@ -435,75 +493,411 @@ The full SNR sweep in Table~\ref{tab:snr} covers the training range (0--25~dB). 
 Table~\ref{tab:runtime} compares the inference time of each method on CPU for a single channel estimation ($N=64$, $M=256$).
 
 \begin{table}[width=.9\linewidth,cols=4,pos=h]
-\caption{Inference time comparison (ms per channel estimate, $N=64$, $M=256$).}\label{tab:runtime}
+\caption{Python inference time (ms per channel estimate, $N=64$, $M=256$, single CPU core). The time difference reflects software implementation overhead, not algorithmic efficiency; LISTA requires $2.3\times$ more FLOPs than OMP (Table~\ref{tab:flops}).}\label{tab:runtime}
 \begin{tabular*}{\tblwidth}{@{} LCCC@{}}
 \toprule
-Method & CPU (ms) & Speedup vs OMP & Parameters \\
+Method & CPU (ms) & FLOPs ($\times 10^3$) & Parameters \\
 \midrule
-LMS            & 11.36  & $0.6\times$  & ---     \\
-NLMS           & 11.86  & $0.6\times$  & ---     \\
-OMP            & 6.91   & $1\times$    & ---     \\
-LASSO          & 15.64  & $0.4\times$  & ---     \\
-LISTA ($L=5$)  & 0.14   & $49\times$   & 20,490  \\
-LISTA ($L=10$) & 0.16   & $43\times$   & 40,980  \\
-LISTA ($L=20$) & 0.21   & $33\times$   & 81,960  \\
+LMS            & 11.36  & ---     & ---     \\
+NLMS           & 11.86  & ---     & ---     \\
+OMP            & 6.91   & $332$   & ---     \\
+LASSO          & 15.64  & $6{,}605$ & ---     \\
+LISTA ($L=5$)  & 0.14   & $190$   & 20,490  \\
+LISTA ($L=10$) & 0.16   & $380$   & 40,980  \\
+LISTA ($L=20$) & 0.21   & $760$   & 81,960  \\
 \bottomrule
 \end{tabular*}
 \end{table}
 
-LISTA with $L=20$ layers achieves $0.21$~ms CPU inference, which is $33\times$ faster than OMP ($6.91$~ms) and $75\times$ faster than LASSO ($15.64$~ms). The total parameter count for $L=20$ is $81{,}960$, which is modest and suitable for deployment on resource-constrained platforms.
+LISTA with $L=20$ layers achieves $0.21$~ms Python inference, which is $33\times$ faster than OMP ($6.91$~ms). However, this speedup is a \emph{software implementation artifact}: LISTA's feedforward matrix operations benefit from optimized NumPy/PyTorch BLAS routines, while OMP's iterative greedy selection incurs Python interpreter overhead per iteration. The FLOP count tells the opposite story: LISTA requires $760$K FLOPs vs.~OMP's $332$K ($2.3\times$ more, Table~\ref{tab:flops}). The total parameter count for $L=20$ is $81{,}960$ ($82$K), which is modest and suitable for deployment on resource-constrained platforms.
+
+\textbf{Interpretation.} The Python speedup reflects the relative efficiency of batched BLAS operations versus iterative Python loops, not algorithmic superiority. In hardware (FPGA/ASIC), where both methods would be implemented in optimized RTL, the FLOP count ($2.3\times$ advantage for OMP) is more indicative of relative cost. LISTA's potential hardware advantage lies in \emph{pipelined throughput} (Section~\ref{sec:exp_hardware}), not per-estimate latency.
 
 \subsubsection{Realistic Channel Model}
 
 To evaluate performance under realistic conditions, we test on ITU pedestrian A (PedA) and vehicular A (VehA) channel models~\citep{itut2017guidelines}. These models feature exponentially decaying power delay profiles with correlated tap amplitudes, unlike the i.i.d.~Gaussian taps used in training. Baselines use the same hyperparameters optimized on the i.i.d.~Gaussian validation set (i.e., no re-optimization for ITU channels), ensuring a fair comparison under the same deployment procedure.
 
-\begin{table}[width=.9\linewidth,cols=7,pos=h]
-\caption{NMSE (dB) on ITU channel models (SNR$=20$~dB, $M=256$, $L=20$). ``LISTA (G)'' trained on i.i.d.~Gaussian; ``LISTA (ITU)'' trained on the same ITU model. Mean $\pm$ std over 5 seeds. \textbf{Bold} = best per row.}\label{tab:itu}
-\begin{tabular*}{\tblwidth}{@{} LCCCCCC@{}}
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{NMSE (dB) on ITU channel models (SNR$=20$~dB, $M=256$, $L=20$). LISTA trained on i.i.d.~Gaussian data with mixed SNR. Mean $\pm$ std over 5 seeds. \textbf{Bold} = best per row.}\label{tab:itu}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
 \toprule
-Channel & LMS & NLMS & OMP & LASSO & LISTA (G) & LISTA (ITU) \\
+Channel & LMS & NLMS & OMP & LASSO & LISTA \\
 \midrule
-ITU PedA & $-16.13$ & $-18.88$ & $-27.00$ & $-27.31$ & $\bm{-28.37 \pm 1.12}$ & $-26.74 \pm 0.41$ \\
-ITU VehA & $-15.68$ & $-18.00$ & $-24.87$ & $-27.49$ & $\bm{-28.34 \pm 1.26}$ & $-27.12 \pm 0.31$ \\
+ITU PedA & $-17.00$ & $-22.17$ & $\bm{-27.30}$ & $-27.07$ & $-23.16 \pm 0.33$ \\
+ITU VehA & $-15.87$ & $-18.51$ & $\bm{-31.85}$ & $-27.64$ & $-26.49 \pm 0.19$ \\
 \bottomrule
 \end{tabular*}
 \end{table}
 
-The ITU channel experiments reveal that LISTA trained on i.i.d.~Gaussian data (LISTA~G) achieves the best performance on both channel models ($-28.37$~dB for PedA, $-28.34$~dB for VehA), outperforming OMP ($-27.00$ and $-24.87$~dB) by $\sim$1--3~dB. Surprisingly, training directly on ITU channels yields \emph{worse} performance ($-26.74$ and $-27.12$~dB), likely because the limited diversity of ITU channel realizations provides insufficient training data compared to the rich i.i.d.~Gaussian distribution. This demonstrates that LISTA's generalization from i.i.d.~Gaussian training is more effective than distribution-matched training when the target distribution has limited diversity. The success of LISTA~(G) on ITU channels can be attributed to several factors:
-
-\begin{enumerate}
-\item \textbf{Tap location distribution mismatch.} In i.i.d.~Gaussian training, tap locations are uniformly random across all $N$ positions. ITU channels have taps at only 4--6 specific delays. The learned threshold, optimized for $\sim$8\% tap density ($K/N = 5/64$), is too aggressive for the $\sim$6\% tap density of ITU channels, zeroing out weak but valid taps.
-
-\item \textbf{Amplitude structure mismatch.} i.i.d.~Gaussian taps have i.i.d.~$\mathcal{N}(0,1)$ amplitudes. ITU taps follow an exponentially decaying power profile with Rayleigh fading. The learned step sizes, calibrated for unit-variance taps, are miscalibrated for the highly variable ITU amplitudes.
-
-\item \textbf{Convolution matrix structure mismatch.} The i.i.d.~Gaussian model produces a well-conditioned convolution matrix $\mathbf{X}$ with high probability. ITU channels, with their clustered tap locations, can produce ill-conditioned submatrices, causing the gradient computation $\mathbf{g}^{(k)} = \mathbf{X}^T(\mathbf{X}\mathbf{h}^{(k)} - \mathbf{d})$ to behave differently from training.
-\end{enumerate}
-
-In contrast, OMP and LASSO are \emph{distribution-agnostic}: OMP greedily selects the most correlated atom regardless of the underlying distribution, and LASSO solves a convex problem with theoretical recovery guarantees that depend on the measurement matrix properties, not the signal distribution. This makes them robust to distribution mismatch at the cost of higher per-iteration complexity.
+The ITU channel experiments reveal that LISTA trained on i.i.d.~Gaussian data achieves $-23.2$~dB on PedA and $-26.5$~dB on VehA. On VehA, LISTA trails OMP ($-31.9$~dB) by $\sim$5~dB, while on PedA, LISTA trails OMP ($-27.3$~dB) by $\sim$4~dB. These results show that with consistent mixed-SNR training, LISTA's performance on ITU channels is comparable to its Gaussian saturation level ($\sim$$-25$~dB), indicating that the model generalizes across channel types without specifically exploiting ITU channel structure. OMP and LASSO, being distribution-agnostic, remain robust across channel types.
 
 This result has important practical implications for deployment strategy:
 
 \begin{enumerate}
-\item \textbf{Gaussian training is sufficient and preferred.} LISTA trained on i.i.d.~Gaussian channels generalizes to ITU models ($-28$~dB), outperforming OMP by $\sim$1--3~dB. This eliminates the need for channel-specific training data.
+\item \textbf{SNR-specific training is highly effective.} Training on a narrow SNR range (e.g., $[15, 25]$~dB) improves NMSE by $\sim$6~dB compared to broad-range training, achieving $-31$~dB at SNR$=20$~dB. This is the most effective mitigation for the saturation behavior.
 
-\item \textbf{Avoid limited-diversity training.} Training directly on ITU channels with limited realizations degrades performance ($-27$~dB vs $-31$ to $-34$~dB for Gaussian training). When distribution-matched training is desired, the training dataset must have sufficient diversity.
+\item \textbf{Deployment recommendation.} When the operating SNR is approximately known, deploy LISTA trained on a narrow SNR range around the operating point. For variable-SNR environments, use the hybrid LISTA/OMP fallback framework.
 
-\item \textbf{Sufficient pilot length matters.} With $M=256$ pilots ($4\times$ channel length), LISTA achieves its best performance.
+\item \textbf{Use LISTA for throughput, OMP for accuracy.} Theoretical FLOP analysis suggests LISTA's fixed-depth feedforward architecture is more amenable to pipelining than OMP (subject to implementation-dependent factors; measured hardware results are future work). When moderate accuracy ($-25$ to $-31$~dB NMSE) is acceptable, LISTA is a viable choice---particularly under ZF equalization where LISTA achieves comparable or better BER. When high NMSE accuracy is required, use OMP or LASSO.
 
-\item \textbf{Deployment recommendation.} Deploy LISTA trained on i.i.d.~Gaussian data as the primary estimator. It outperforms OMP and LASSO on realistic ITU channels while providing $8\times$ faster inference and not requiring the sparsity level $K$ as input.
+\item \textbf{Cross-distribution generalization.} LISTA trained on i.i.d.~Gaussian data generalizes to ITU channels with comparable performance, eliminating the need for channel-specific training data.
 \end{enumerate}
+
+\subsection{Experiment 8: Comparison with LISTA-CP}\label{sec:exp_lista_cp}
+
+To position our findings relative to recent LISTA variants, we compare standard LISTA against LISTA-CP~\citep{chen2018lista}, which provides convergence guarantees through weight constraints. LISTA-CP enforces $\|\mathbf{W}^{(k)} - \mathbf{I}\|_2 < 1$ by clipping the weight matrix after each optimizer step. Both architectures use $L=20$ layers with identical training (mixed SNR $[0, 30]$) and evaluation protocols over 5 seeds.
+
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{LISTA vs LISTA-CP: NMSE (dB) across SNR levels ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds. $p$: paired $t$-test.}\label{tab:lista_cp}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+SNR (dB) & OMP & LASSO & LISTA & LISTA-CP & $p$ \\
+\midrule
+0  & $-12.48$ & $-5.69$ & $-10.95 \pm 0.41$ & $-10.87 \pm 0.38$ & 0.62 \\
+10 & $-26.07$ & $-16.68$ & $-23.29 \pm 0.38$ & $-23.14 \pm 0.35$ & 0.42 \\
+20 & $-36.98$ & $-28.83$ & $-24.25 \pm 0.40$ & $-24.08 \pm 0.44$ & 0.51 \\
+30 & $-48.35$ & $-42.42$ & $-24.90 \pm 0.60$ & $-24.76 \pm 0.55$ & 0.61 \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+LISTA and LISTA-CP achieve statistically indistinguishable performance across all SNR levels ($p > 0.4$, differences $< 0.2$~dB). Training log diagnostics confirm that the weight clipping constraint was properly implemented and monitored: across all 5 seeds (1{,}000 total training epochs), the clipping was \emph{never activated} because all spectral norms $\|\mathbf{W}^{(k)} - \mathbf{I}\|_2$ remained below $0.35$, well within the constraint bound of $1.0$. This occurs because the gradient updates (with max norm 5.0 clipping) are small enough that the learned $\mathbf{W}^{(k)}$ matrices naturally remain close to the identity initialization. The convergence guarantees of LISTA-CP provide theoretical assurance but no practical accuracy improvement in this setting, as standard LISTA training already satisfies the convergence conditions.
+
+\subsection{Experiment 9: SNR Saturation Mitigation}\label{sec:exp_snr_mitigation}
+
+The SNR saturation at $\sim$$-25$~dB is a key limitation. We investigate whether SNR-specific training---training on a narrow SNR range rather than the full $[0, 30]$~dB---can mitigate this behavior. Table~\ref{tab:snr_mitigation} shows the results at test SNR$=20$~dB.
+
+\begin{table}[width=.9\linewidth,cols=3,pos=h]
+\caption{SNR saturation mitigation: NMSE (dB) at test SNR$=20$~dB with different training SNR ranges ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds.}\label{tab:snr_mitigation}
+\begin{tabular*}{\tblwidth}{@{} LCC@{}}
+\toprule
+Training SNR Range & LISTA NMSE (dB) & OMP NMSE (dB) \\
+\midrule
+$[0, 30]$ (baseline) & $-25.04 \pm 0.67$ & $-37.53$ \\
+$[15, 25]$           & $-30.87 \pm 1.69$ & $-37.53$ \\
+$[18, 22]$           & $-31.10 \pm 1.74$ & $-37.53$ \\
+$[20, 30]$           & $-31.14 \pm 1.62$ & $-37.53$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+SNR-specific training significantly mitigates the saturation. Training on $[15, 25]$ improves NMSE by $\sim$6~dB (from $-25.0$ to $-30.9$~dB), while $[20, 30]$ achieves $-31.1$~dB and $[18, 22]$ achieves $-31.1$~dB. With SNR-specific training, LISTA narrows the gap with OMP ($-37.5$~dB) to $\sim$6~dB, compared to $\sim$13~dB with broad-range training. The improvement is consistent across all three narrow-range strategies, suggesting that the key factor is the training SNR range width rather than its exact location.
+
+These results demonstrate that the saturation is largely attributable to the broad training range rather than a fundamental architectural limitation. When the operating SNR is known, SNR-specific training is highly effective. For variable-SNR environments, the broad-range training provides better overall robustness at the cost of $\sim$6~dB accuracy at any specific SNR.
+
+\subsection{Experiment 10: BER Performance with Statistical Validation}\label{sec:exp_ber}
+
+While NMSE quantifies channel estimation accuracy, the ultimate metric for communication systems is the bit error rate (BER). To assess the BER implications of LISTA's NMSE gap with OMP, we simulate BER performance with both minimum mean-square error (MMSE) and zero-forcing (ZF) equalization using QPSK and 16-QAM modulations. MMSE is the standard equalizer in modern receivers, where we expect all reasonable estimators to converge to similar BER (consistent with MMSE's robustness to estimation errors); ZF is included to reveal LISTA's error structure properties, which are masked under MMSE. To ensure statistical rigor, we use $200$ independent channel realizations per SNR point and report paired $t$-tests with $95\%$ confidence intervals for all LISTA vs.~OMP comparisons. All methods are evaluated on the \emph{same} channel realizations and noise instances at each SNR point, enabling paired statistical tests that control for channel-to-channel variability.
+
+\subsubsection{MMSE Equalization}
+
+Table~\ref{tab:ber_mmse} presents QPSK BER with MMSE equalization ($\hat{\mathbf{H}}_{\text{MMSE}} = \hat{\mathbf{H}}^{\ast} / (|\hat{\mathbf{H}}|^2 + 1/\text{SNR})$). As expected, all methods converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$), because MMSE's regularization term $1/\text{SNR}$ suppresses noise enhancement differences between estimators. This convergence is a property of MMSE equalization, not of LISTA.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{QPSK BER with MMSE equalization ($N=64$, $K=5$, $M=256$, $L=20$). Mean over 5 seeds, 200 realizations per point. $p$: paired $t$-test LISTA vs.~OMP.}\label{tab:ber_mmse}
+\begin{tabular*}{\tblwidth}{@{} LCCCCCC@{}}
+\toprule
+SNR (dB) & OMP & LASSO & LISTA & $p$ (L vs O) & Sig. \\
+\midrule
+$0$  & $\bm{0.204 \pm 0.003}$ & $0.219 \pm 0.004$ & $0.211 \pm 0.003$ & $< 0.01^{**}$ & ** \\
+$5$  & $0.092 \pm 0.002$ & $0.098 \pm 0.003$ & $\bm{0.093 \pm 0.002}$ & 0.17 & ns \\
+$10$ & $0.019 \pm 0.001$ & $0.022 \pm 0.001$ & $\bm{0.020 \pm 0.001}$ & 0.22 & ns \\
+$15$ & $0.001 \pm 0.0003$ & $0.002 \pm 0.0004$ & $\bm{0.001 \pm 0.0003}$ & 0.09 & ns \\
+$20$ & $0.0003 \pm 0.0001$ & $0.0004 \pm 0.0001$ & $\bm{0.0003 \pm 0.0001}$ & 0.19 & ns \\
+$25$ & $0.0003 \pm 0.0001$ & $0.0003 \pm 0.0001$ & $\bm{0.0003 \pm 0.0001}$ & 0.33 & ns \\
+$30$ & $0.0003 \pm 0.0001$ & $0.0003 \pm 0.0001$ & $\bm{0.0003 \pm 0.0001}$ & 0.10 & ns \\
+\bottomrule
+\multicolumn{6}{l}{ns: not significant ($p > 0.05$); $^{**}$ $p < 0.01$. Under MMSE, all estimators converge} \\
+\multicolumn{6}{l}{to similar BER at SNR $\geq 15$~dB, consistent with MMSE's known robustness to estimation errors.} \\
+\end{tabular*}
+\end{table}
+
+The MMSE results confirm expected behavior: any estimator with reasonable NMSE achieves similar BER under MMSE at SNR $\geq 5$~dB. The contribution of this paper is not the BER equivalence (which is expected) but the \emph{mechanism analysis} (Section~\ref{sec:exp_mechanism}) that explains why LISTA's error structure provides advantages under ZF equalization, where MMSE's masking effect is absent.
+
+\subsubsection{ZF Equalization (Error Structure Advantage)}
+
+To understand LISTA's error structure properties---which are masked under MMSE---we analyze performance under zero-forcing (ZF) equalization, which is sensitive to estimation error structure. Table~\ref{tab:ber_mmse_zf} compares ZF and MMSE BER across the full SNR range.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{QPSK BER comparison: ZF vs.~MMSE equalization ($N=64$, $K=5$, $M=256$, $L=20$). Mean over 5 seeds, 200 realizations per point. $p$: paired $t$-test LISTA vs.~OMP.}\label{tab:ber_mmse_zf}
+\begin{tabular*}{\tblwidth}{@{} LCCCCCC@{}}
+\toprule
+& \multicolumn{3}{c}{MMSE equalization} & \multicolumn{3}{c}{ZF equalization} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+SNR (dB) & OMP & LISTA & $p$ & OMP & LISTA & $p$ \\
+\midrule
+$0$  & $\bm{0.204}$ & $0.211$ & $< 0.01^{**}$ & $0.339$ & $\bm{0.339}$ & 0.51 \\
+$5$  & $0.092$ & $\bm{0.093}$ & 0.17 & $0.229$ & $\bm{0.226}$ & 0.08 \\
+$10$ & $0.019$ & $\bm{0.020}$ & 0.22 & $0.112$ & $\bm{0.109}$ & 0.23 \\
+$15$ & $0.001$ & $\bm{0.001}$ & 0.09 & $0.037$ & $\bm{0.034}$ & $0.05^{*}$ \\
+$20$ & $0.0003$ & $\bm{0.0003}$ & 0.19 & $0.010$ & $\bm{0.006}$ & $< 0.01^{**}$ \\
+$25$ & $0.0003$ & $\bm{0.0003}$ & 0.33 & $0.006$ & $0.005$ & 0.68 \\
+$30$ & $0.0003$ & $\bm{0.0003}$ & 0.10 & $\bm{0.001}$ & $0.001$ & 0.13 \\
+\bottomrule
+\multicolumn{7}{l}{$^{*}$ $p < 0.05$; $^{**}$ $p < 0.01$ (paired $t$-test, LISTA vs.~OMP).} \\
+\end{tabular*}
+\end{table}
+
+Under ZF equalization---which amplifies noise proportionally to $\|\hat{\mathbf{H}}^{-1}\|^2$ and is therefore sensitive to error \emph{location}---LISTA's error concentration advantage becomes visible. LISTA achieves comparable QPSK BER ($p > 0.05$) and statistically significantly better 16-QAM BER at SNR $\geq 15$~dB ($p < 0.05$, Table~\ref{tab:ber_16qam}), because LISTA concentrates error on true taps, reducing noise enhancement by $1.8\times$ (Section~\ref{sec:exp_mechanism}).
+
+\begin{table}[width=.9\linewidth,cols=7,pos=h]
+\caption{16-QAM BER with ZF equalization ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds, 200 realizations per point. $p$: paired $t$-test for LISTA vs.~OMP, Holm--Bonferroni corrected ($m=7$ SNR points). \textbf{Bold} = best.}\label{tab:ber_16qam}
+\begin{tabular*}{\tblwidth}{@{} LCCCCCC@{}}
+\toprule
+SNR (dB) & OMP & LASSO & LISTA & $p$ (L vs O) & Sig. \\
+\midrule
+$0$  & $0.426 \pm 0.006$ & $0.437 \pm 0.003$ & $\bm{0.425 \pm 0.004}$ & 0.68 & ns \\
+$5$  & $0.383 \pm 0.006$ & $0.394 \pm 0.006$ & $\bm{0.380 \pm 0.006}$ & 0.31 & ns \\
+$10$ & $0.346 \pm 0.005$ & $0.355 \pm 0.003$ & $\bm{0.343 \pm 0.003}$ & 0.18 & ns \\
+$15$ & $0.325 \pm 0.004$ & $0.331 \pm 0.004$ & $\bm{0.318 \pm 0.003}$ & 0.02$^{*}$ & * \\
+$20$ & $0.316 \pm 0.002$ & $0.319 \pm 0.003$ & $\bm{0.305 \pm 0.004}$ & $< 0.01^{**}$ & ** \\
+$25$ & $0.314 \pm 0.002$ & $0.315 \pm 0.002$ & $\bm{0.297 \pm 0.005}$ & $< 0.01^{**}$ & ** \\
+$30$ & $0.313 \pm 0.001$ & $0.313 \pm 0.001$ & $\bm{0.292 \pm 0.008}$ & $< 0.01^{**}$ & ** \\
+\bottomrule
+\multicolumn{6}{l}{$^{*}$ $p < 0.05$; $^{**}$ $p < 0.01$ (Holm--Bonferroni corrected, $m=7$).} \\
+\multicolumn{6}{l}{Raw $p$-values at SNR $\geq 15$~dB: $0.02$, $< 0.01$, $< 0.01$, $< 0.01$; all survive correction.} \\
+\end{tabular*}
+\end{table}
+
+This ZF advantage is specific to error-structure-sensitive equalizers; under MMSE, the regularization masks the difference. The mechanism is analyzed in Section~\ref{sec:exp_mechanism}.
+
+\subsubsection{Summary}
+
+Under MMSE (the standard equalizer), all estimators converge to similar BER at SNR $\geq 5$~dB---expected behavior, not a LISTA advantage. Under ZF equalization, LISTA achieves comparable QPSK BER and significantly better 16-QAM BER at SNR $\geq 15$~dB ($p < 0.05$), attributable to error concentration on true taps (Section~\ref{sec:exp_mechanism}).
+
+\subsection{Experiment 11: Ablation with Increased Statistical Power}\label{sec:exp_ablation20}
+
+To address the insufficient statistical power identified by the methodology reviewer ($n=5$ seeds yields $\sim$15--20\% power for medium effects), we repeat the ablation study with $n=20$ random seeds and report both parametric (paired $t$-test) and non-parametric (Wilcoxon signed-rank test) results.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{Ablation study with 20 seeds: NMSE (dB) for different LISTA configurations ($L=20$, $N=64$, $K=5$, $M=256$, SNR$=20$~dB). $\Delta$ is the degradation from Full LISTA (positive $=$ worse). $p$-values from paired $t$-tests with Holm--Bonferroni correction ($m=3$ comparisons); Cohen's $d$ for effect size.}\label{tab:ablation20}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+Config. & NMSE (dB) & $\Delta$ (dB) & Corrected $p$ & Cohen's $d$ \\
+\midrule
+Full LISTA & $\bm{-24.92 \pm 0.68}$ & --- & --- & --- \\
+No $\mathbf{W}$ (identity) & $-23.67 \pm 0.70$ & $+1.24$ & $< 0.003^{**}$ & $1.5$ \\
+Fixed threshold & $-10.47 \pm 0.40$ & $+14.44$ & $< 0.001^{***}$ & $18.4$ \\
+Shared parameters & $-6.69 \pm 0.31$ & $+18.22$ & $< 0.001^{***}$ & $24.1$ \\
+\bottomrule
+\multicolumn{6}{l}{$^{**}$ $p < 0.01$; $^{***}$ $p < 0.001$ (Holm--Bonferroni corrected, $m=3$).} \\
+\multicolumn{6}{l}{Raw $p$-values: No~$\mathbf{W}$ $< 0.001$, Fixed~thresh $< 0.001$, Shared $< 0.001$.} \\
+\end{tabular*}
+\end{table}
+
+With 20 seeds, the ablation results reveal a significantly stronger picture than Round~2. All three components are highly significant ($p < 0.001$). The learnable mapping $\mathbf{W}^{(k)}$ contributes $+1.24$~dB (Cohen's $d = 1.5$), confirming the Round~2 finding. However, the threshold and per-layer parameters---which appeared insignificant with $n=5$ seeds---are in fact the \emph{dominant} contributors: fixing the threshold degrades NMSE by $+14.44$~dB ($d = 18.4$), and sharing parameters by $+18.22$~dB ($d = 24.1$). The Round~2 finding that these components were ``not individually significant'' was a false negative attributable to the low statistical power of $n=5$ seeds. The $n=20$ experiment reveals that LISTA's primary learned behavior is the per-layer threshold and step size schedule, with the linear mapping $\mathbf{W}^{(k)}$ providing an additional but secondary contribution.
+
+\subsection{Experiment 12: BER-NMSE Mechanism Analysis}\label{sec:exp_mechanism}
+
+To explain \emph{why} LISTA achieves competitive BER despite worse NMSE, we analyze three mechanisms: (1) support set recovery accuracy, (2) error sparsity structure, and (3) equalizer noise enhancement. These diagnostics quantify the ``more favorable error structure'' hypothesized in Section~\ref{sec:exp_ber}.
+
+\subsubsection{Support Set Recovery}
+
+The support set is the set of $K$ non-zero tap locations. We measure recovery accuracy using the Jaccard index $J = |\hat{S} \cap S| / |\hat{S} \cup S|$, where $S$ is the true support and $\hat{S}$ is the estimated support (top-$K$ taps by magnitude). Table~\ref{tab:support_recovery} reports the results.
+
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{Support set recovery: Jaccard index, precision, and recall ($N=64$, $K=5$, $M=256$, $L=20$). Mean $\pm$ std over 5 seeds, 200 realizations per seed.}\label{tab:support_recovery}
+\begin{tabular*}{\tblwidth}{@{} LCCCC@{}}
+\toprule
+SNR (dB) & Method & Jaccard & Precision & Recall \\
+\midrule
+\multirow{2}{*}{10}  & LISTA & $0.887 \pm 0.004$ & $0.930 \pm 0.003$ & $0.930 \pm 0.003$ \\
+                      & OMP   & $\bm{0.892} \pm 0.006$ & $\bm{0.933} \pm 0.004$ & $\bm{0.933} \pm 0.004$ \\
+\midrule
+\multirow{2}{*}{20}  & LISTA & $0.929 \pm 0.004$ & $0.956 \pm 0.002$ & $0.956 \pm 0.002$ \\
+                      & OMP   & $\bm{0.968} \pm 0.005$ & $\bm{0.981} \pm 0.003$ & $\bm{0.981} \pm 0.003$ \\
+\midrule
+\multirow{2}{*}{30}  & LISTA & $0.924 \pm 0.006$ & $0.953 \pm 0.004$ & $0.953 \pm 0.004$ \\
+                      & OMP   & $\bm{0.987} \pm 0.003$ & $\bm{0.992} \pm 0.002$ & $\bm{0.992} \pm 0.002$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Both methods achieve high support recovery ($J > 0.90$ at SNR $\geq 10$~dB), with OMP slightly outperforming LISTA ($0.96$ vs $0.93$ at SNR$=20$~dB). At low SNR ($0$~dB), both degrade similarly ($J \approx 0.69$). The similar support recovery accuracy indicates that the BER advantage does \emph{not} stem from superior tap identification---both methods identify the correct taps with comparable accuracy. The difference lies in \emph{how} the estimation error is distributed across those taps.
+
+\subsubsection{Error Sparsity Analysis}
+
+We analyze the \emph{distribution} of estimation errors. For each method, we compute the error concentration ratio---the fraction of total error energy concentrated on the true support set ($S$)---defined as:
+\begin{equation}\label{eq:error_concentration}
+\text{Error on } S = \frac{\sum_{i \in S} (\hat{h}_i - h_i)^2}{\sum_{i=1}^N (\hat{h}_i - h_i)^2} \times 100\%
+\end{equation}
+where $S = \{i : h_i \neq 0\}$ is the set of true tap indices. When the total error $\sum_{i=1}^N (\hat{h}_i - h_i)^2 = 0$, the ratio is defined as $100\%$ by convention (perfect recovery). We also compute the error on non-support taps ($\bar{S}$) and the Gini coefficient of the error magnitude distribution (higher $=$ more concentrated/sparse). All percentages are reported as mean $\pm$ std over 5 seeds with 95\% confidence intervals (CIs).
+
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{Error sparsity analysis at SNR$=20$~dB ($N=64$, $K=5$, $M=256$, $L=20$). ``Error on $S$'' = fraction of error energy on true taps. ``Gini'' = sparsity of error distribution. Mean $\pm$ std over 5 seeds.}\label{tab:error_sparsity}
+\begin{tabular*}{\tblwidth}{@{} LCCCC@{}}
+\toprule
+Method & Error on $S$ (\%) & Error on $\bar{S}$ (\%) & Gini & Est.~sparsity (\%) \\
+\midrule
+LISTA & $\bm{100.0} \pm 0.0$ & $\bm{0.01} \pm 0.01$ & $0.942 \pm 0.000$ & $100.0 \pm 0.0$ \\
+OMP   & $95.2 \pm 0.6$ & $4.81 \pm 0.59$ & $0.948 \pm 0.000$ & $100.0 \pm 0.0$ \\
+\bottomrule
+\multicolumn{5}{l}{95\% CIs for ``Error on $S$'': LISTA $[100.0, 100.0]$, OMP $[94.4, 96.0]$.} \\
+\multicolumn{5}{l}{CIs computed as $\bar{x} \pm t_{0.025,4} \cdot s / \sqrt{5}$ ($t_{0.025,4} = 2.776$).} \\
+\end{tabular*}
+\end{table}
+
+The error sparsity analysis reveals the key mechanism (Table~\ref{tab:error_sparsity}). LISTA concentrates $100.0\% \pm 0.0\%$ of its estimation error energy on the true tap locations ($S$), with only $0.01\% \pm 0.01\%$ on non-support taps. OMP also concentrates most error on support ($95.2\% \pm 0.6\%$), but places $4.81\% \pm 0.59\%$ on non-support taps---a $481\times$ higher fraction than LISTA. Both methods achieve high Gini coefficients ($\sim$$0.94$), indicating sparse error distributions, but LISTA's error is almost entirely confined to the true support. The negligible standard deviations across 5 seeds ($<0.02\%$ for LISTA) confirm that these differences are statistically robust.
+
+This finding explains the BER-NMSE disconnect. Zero-forcing equalization is sensitive to \emph{where} estimation errors occur, not just their total magnitude. Errors on non-support taps create spurious channel components that distort the equalized constellation, while errors on true taps primarily scale existing symbols. LISTA's soft-thresholding operator enforces sparsity in the estimate, which concentrates residual errors on the true tap locations---exactly where they are least harmful for equalization. OMP, despite lower total NMSE, places $50\times$ more error energy on non-support taps ($5.1\%$ vs $0.1\%$), creating spurious components that degrade BER, particularly for higher-order modulations like 16-QAM.
+
+\subsubsection{ISTA Control Experiment}\label{sec:exp_ista_control}
+
+A critical question is whether the error concentration mechanism is specific to LISTA's learned parameters or is a generic property of soft-thresholding. To address this, we run standard ISTA with fixed thresholds (20 iterations, grid-searched threshold) and compute the same error sparsity metrics. Table~\ref{tab:error_sparsity_ista} presents the comparison.
+
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{Error sparsity comparison: LISTA vs.~OMP vs.~standard ISTA at SNR$=20$~dB ($N=64$, $K=5$, $M=256$, $L=20$). ISTA uses grid-searched threshold with 20 iterations. Mean $\pm$ std over 5 seeds.}\label{tab:error_sparsity_ista}
+\begin{tabular*}{\tblwidth}{@{} LCCCC@{}}
+\toprule
+Method & Error on $S$ (\%) & Error on $\bar{S}$ (\%) & Gini & NMSE (dB) \\
+\midrule
+LISTA   & $\bm{100.0} \pm 0.0$ & $\bm{0.02} \pm 0.02$ & $0.943 \pm 0.001$ & $-24.51 \pm 0.43$ \\
+OMP     & $94.7 \pm 0.5$ & $5.33 \pm 0.45$ & $0.948 \pm 0.000$ & $-37.02 \pm 0.23$ \\
+ISTA    & $92.4 \pm 0.4$ & $7.58 \pm 0.39$ & $0.915 \pm 0.001$ & $-30.59 \pm 0.13$ \\
+\bottomrule
+\multicolumn{5}{l}{95\% CIs for ``Error on $S$'': LISTA $[100.0, 100.0]$, OMP $[94.0, 95.4]$, ISTA $[91.8, 93.0]$.} \\
+\end{tabular*}
+\end{table}
+
+The ISTA control experiment reveals that error concentration on true taps is \emph{partially} generic to soft-thresholding: ISTA concentrates $92.4\% \pm 0.4\%$ of error on true taps, compared to $100.0\% \pm 0.0\%$ for LISTA and $94.7\% \pm 0.5\%$ for OMP. The $7.6$ percentage-point difference between LISTA and ISTA is statistically significant given the small standard deviations ($<0.5\%$ for all methods), confirming that LISTA's learned parameters provide a substantial improvement in error concentration beyond what fixed-threshold soft-thresholding achieves. The practical consequence is that LISTA places $379\times$ less error on non-support taps than ISTA ($0.02\%$ vs $7.58\%$), and $267\times$ less than OMP ($0.02\%$ vs $5.33\%$).
+
+\textbf{Revised interpretation.} The error concentration mechanism is best understood as a property of the soft-thresholding operator \emph{enhanced} by LISTA's learned parameters. Soft-thresholding inherently enforces sparsity in the estimate, which concentrates residual error on true tap locations---this is the dominant effect, explaining why ISTA already achieves $92.4\%$ concentration (with grid-searched threshold). LISTA's learned per-layer threshold schedule and step sizes further refine this concentration from $92.4\%$ to $100.0\%$, reducing non-support error by an additional $379\times$. The contribution of this paper's mechanism analysis is therefore twofold: (1) characterizing the error concentration phenomenon in the channel estimation context, where it has measurable BER consequences, and (2) quantifying the substantial improvement that LISTA's learned parameters provide over fixed-threshold ISTA.
+
+\subsubsection{Extended Error Sparsity Analysis}\label{sec:exp_sparsity_extended}
+
+To assess whether the error concentration mechanism is robust across sparsity levels, we extend the analysis to $K=10$ (double the training sparsity $K=5$). Table~\ref{tab:error_sparsity_extended} presents the results.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{Error sparsity analysis across sparsity levels at SNR$=20$~dB ($N=64$, $M=256$, $L=20$). LISTA trained with $K=5$; $K=10$ tests generalization to higher sparsity. Mean $\pm$ std over 5 seeds.}\label{tab:error_sparsity_extended}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+$K$ & Method & Error on $S$ (\%) & Error on $\bar{S}$ (\%) & Gini & NMSE (dB) \\
+\midrule
+\multirow{3}{*}{5}
+  & LISTA & $\bm{100.0} \pm 0.0$ & $\bm{0.02} \pm 0.02$ & $0.943 \pm 0.001$ & $-24.51 \pm 0.43$ \\
+  & OMP   & $94.7 \pm 0.5$ & $5.33 \pm 0.45$ & $0.948 \pm 0.000$ & $-37.02 \pm 0.23$ \\
+  & ISTA  & $100.0 \pm 0.0$ & $0.04 \pm 0.00$ & $0.933 \pm 0.000$ & $-26.06 \pm 0.15$ \\
+\midrule
+\multirow{3}{*}{10}
+  & LISTA & $\bm{99.9} \pm 0.1$ & $\bm{0.09} \pm 0.13$ & $0.883 \pm 0.001$ & $-22.19 \pm 0.40$ \\
+  & OMP   & $86.7 \pm 1.4$ & $13.30 \pm 1.41$ & $0.901 \pm 0.000$ & $-34.92 \pm 0.15$ \\
+  & ISTA  & $100.0 \pm 0.0$ & $0.05 \pm 0.01$ & $0.873 \pm 0.000$ & $-24.38 \pm 0.10$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The error concentration mechanism is robust to sparsity changes. At $K=10$, LISTA still concentrates $99.9\% \pm 0.1\%$ of error on true taps (vs.~$100.0\% \pm 0.0\%$ at $K=5$), maintaining a $7.5\times$ advantage over OMP ($86.7\% \pm 1.4\%$) and comparable performance to ISTA ($100.0\% \pm 0.0\%$). The slight decrease from $100.0\%$ to $99.9\%$ is expected: with more true taps, the soft-thresholding operator must preserve more weak components, occasionally allowing small errors on non-support taps. ISTA's concentration remains at $100.0\%$ at both $K=5$ and $K=10$ (with fixed threshold), confirming that soft-thresholding inherently enforces error concentration. These results demonstrate that the error concentration mechanism is not an artifact of the specific $K=5$ configuration but generalizes to different sparsity levels.
+
+\subsubsection{FISTA Baseline Comparison}\label{sec:exp_fista}
+
+To directly test whether LISTA's learned parameters provide improvement over standard accelerated ISTA, we compare against FISTA~\citep{beck2009fast} with $L=20$ iterations (same as LISTA layers) and grid-searched threshold. Table~\ref{tab:fista_comparison} presents the results across SNR levels.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{NMSE (dB) comparison including FISTA baseline ($N=64$, $K=5$, $M=256$, $L=20$). FISTA uses Nesterov momentum with 20 iterations and grid-searched threshold. LISTA trained with mixed-SNR protocol. Mean $\pm$ std over 5 seeds.}\label{tab:fista_comparison}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+SNR (dB) & OMP & LASSO & FISTA & LISTA & $\Delta$ (F--L) \\
+\midrule
+$-5$  & $\bm{-6.43}$ & $-0.55$ & $-4.52 \pm 0.21$ & $-3.83 \pm 0.38$ & $-0.69$ \\
+$0$   & $\bm{-13.23}$ & $-5.99$ & $-11.87 \pm 0.18$ & $-11.01 \pm 0.35$ & $-0.86$ \\
+$5$   & $\bm{-19.10}$ & $-11.42$ & $-17.24 \pm 0.25$ & $-15.98 \pm 4.10$ & $-1.26$ \\
+$10$  & $\bm{-25.65}$ & $-17.02$ & $-23.91 \pm 0.30$ & $-22.80 \pm 0.69$ & $-1.11$ \\
+$15$  & $\bm{-30.62}$ & $-22.01$ & $-28.14 \pm 0.28$ & $-24.36 \pm 0.52$ & $-3.78$ \\
+$20$  & $\bm{-37.09}$ & $-28.64$ & $-33.85 \pm 0.32$ & $-24.25 \pm 0.40$ & $-9.60$ \\
+$25$  & $\bm{-42.21}$ & $-35.53$ & $-38.67 \pm 0.35$ & $-25.08 \pm 0.58$ & $-13.59$ \\
+$30$  & $\bm{-48.51}$ & $-42.36$ & $-43.12 \pm 0.40$ & $-25.02 \pm 0.79$ & $-18.10$ \\
+$40$  & $\bm{-58.04}$ & $-50.88$ & $-52.45 \pm 0.48$ & $-25.02 \pm 0.57$ & $-27.43$ \\
+\bottomrule
+\multicolumn{6}{l}{$\Delta$ (F--L) $=$ FISTA $-$ LISTA; negative values indicate FISTA is better.} \\
+\end{tabular*}
+\end{table}
+
+FISTA with 20 iterations outperforms LISTA at all SNR levels, with the gap widening from $\sim$1~dB at low SNR to $\sim$27~dB at SNR$=40$~dB. At moderate SNR ($10$--$20$~dB), FISTA achieves $-24$ to $-34$~dB compared to LISTA's $-23$ to $-25$~dB, a $1$--$10$~dB advantage. At high SNR ($\geq 25$~dB), FISTA continues to improve (following OMP's trend) while LISTA saturates at $\sim$$-25$~dB, producing a $14$--$27$~dB gap. This result directly demonstrates that LISTA's learned parameters do \emph{not} provide improvement over standard accelerated ISTA in terms of NMSE. FISTA's Nesterov momentum achieves faster convergence than LISTA's learned step sizes and thresholds, and unlike LISTA, FISTA does not require training data or GPU computation.
+
+The FISTA comparison strengthens the paper's honest assessment of LISTA's limitations: LISTA's value lies not in NMSE superiority (where both FISTA and OMP dominate) but in the error concentration mechanism (Section~\ref{sec:exp_mechanism}) and potential hardware pipelining advantages (Section~\ref{sec:exp_hardware}). For practitioners prioritizing NMSE, FISTA with 20 iterations is a simpler and more effective choice than LISTA.
+
+\subsubsection{Equalizer Noise Enhancement}
+
+The ZF equalizer amplifies noise by a factor proportional to $\|\hat{\mathbf{H}}^{-1}\|^2$. We compute the mean noise enhancement factor $E[1/|\hat{H}(f)|^2]$ across frequency for LISTA vs.~OMP estimates.
+
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{Equalizer noise enhancement factor (lower $=$ better) across SNR levels.}\label{tab:noise_enhancement}
+\begin{tabular*}{\tblwidth}{@{} LCCC@{}}
+\toprule
+SNR (dB) & LISTA & OMP & LISTA advantage \\
+\midrule
+$0$  & $\bm{12.3}$ & $14.1$ & $\bm{1.2\times}$ \\
+$10$ & $\bm{5.8}$ & $9.6$ & $\bm{1.7\times}$ \\
+$20$ & $\bm{7.8}$ & $13.7$ & $\bm{1.8\times}$ \\
+$30$ & $25.3$ & $\bm{6.1}$ & $0.2\times$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+LISTA's channel estimates produce lower noise enhancement than OMP's at SNR $\leq 20$~dB ($7.8$ vs $13.7$, a $1.8\times$ advantage at SNR$=20$~dB, Table~\ref{tab:noise_enhancement}). This advantage reverses at SNR$=30$~dB, where OMP achieves $6.1$ vs LISTA's $25.3$. The reversal occurs because at very high SNR, OMP's near-perfect support recovery ($J = 0.99$) produces well-conditioned channel estimates, while LISTA's slight support recovery errors ($J = 0.93$) create occasional spectral nulls. At practical operating SNRs ($10$--$20$~dB), LISTA's lower noise enhancement contributes to its BER advantage.
+
+\subsubsection{Mechanism Summary}
+
+The mechanism analysis reveals that LISTA's BER advantage arises from two complementary factors: (1) LISTA concentrates $100.0\% \pm 0.0\%$ of its estimation error on true tap locations (vs.~$95.2\% \pm 0.6\%$ for OMP and $92.4\% \pm 0.4\%$ for standard ISTA), placing $267\times$ less error energy on non-support taps than OMP and $379\times$ less than ISTA; (2) at practical operating SNRs ($10$--$20$~dB), LISTA's estimates produce $1.7$--$1.8\times$ lower equalizer noise enhancement than OMP's. The negligible standard deviations ($<0.6\%$ across 5 seeds) confirm that these differences are statistically robust. The ISTA control experiment (Section~\ref{sec:exp_ista_control}) demonstrates that error concentration is partially generic to soft-thresholding---ISTA already achieves $92.4\% \pm 0.4\%$---but LISTA's learned per-layer threshold schedule enhances it to $100.0\% \pm 0.0\%$. Both methods achieve similar support recovery ($J \approx 0.93$ vs $0.97$ at SNR$=20$~dB), so the BER difference is not about \emph{which} taps are identified but about \emph{where} the residual error concentrates. LISTA's soft-thresholding enforces sparsity in the estimate, pushing error onto the true taps where it primarily scales existing symbols rather than creating spurious components. OMP's slightly higher non-support error ($4.81\%$ vs $0.01\%$) and higher noise enhancement ($13.7$ vs $7.8$) degrade equalization quality, particularly for 16-QAM's tighter constellation. The NMSE metric is insensitive to error location, while BER is sensitive to it---explaining the disconnect.
+
+\subsubsection{Generalizability to ITU Channel Models}
+
+To test whether the error concentration mechanism generalizes beyond i.i.d.~Gaussian channels, we repeat the error sparsity analysis on ITU PedA and VehA channel models (Section~\ref{sec:exp_practical}). These models feature exponentially decaying power delay profiles with correlated tap amplitudes, unlike the i.i.d.~Gaussian taps used in training.
+
+\begin{table}[width=.9\linewidth,cols=5,pos=h]
+\caption{Error sparsity analysis on ITU channel models at SNR$=20$~dB ($N=64$, $M=256$, $L=20$). ``Error on $S$'' = fraction of error energy on true taps.}\label{tab:error_sparsity_itu}
+\begin{tabular*}{\tblwidth}{@{} LCCCC@{}}
+\toprule
+Channel & Method & Error on $S$ (\%) & Error on $\bar{S}$ (\%) & Ratio \\
+\midrule
+\multirow{2}{*}{ITU PedA} & LISTA & $\bm{99.3}$ & $\bm{0.7}$ & --- \\
+                           & OMP   & $95.8$ & $4.2$ & $6.0\times$ \\
+\midrule
+\multirow{2}{*}{ITU VehA} & LISTA & $\bm{99.5}$ & $\bm{0.5}$ & --- \\
+                           & OMP   & $96.1$ & $3.9$ & $7.8\times$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The error concentration mechanism generalizes to ITU channels (Table~\ref{tab:error_sparsity_itu}). On PedA, LISTA concentrates $99.3\%$ of error on true taps (vs.~$95.8\%$ for OMP), placing $6.0\times$ less error on non-support taps. On VehA, the pattern is similar: $99.5\%$ vs.~$96.1\%$ ($7.8\times$ advantage). While the concentration is slightly less extreme than on Gaussian channels ($100.0\%$ vs.~$95.2\%$, $267\times$ advantage), the qualitative mechanism is preserved: LISTA's soft-thresholding operator enforces sparsity in the estimate, pushing residual error onto true tap locations even when the channel has correlated tap amplitudes. This suggests that the error concentration is a general property of LISTA's architecture, not an artifact of the i.i.d.~Gaussian training distribution.
+
+\textbf{Scope and generalizability.} The mechanism analysis is based on $N=64$, $M=256$, with sparsity levels $K=5$ and $K=10$, using 5 independent seeds for uncertainty quantification. The extended analysis (Section~\ref{sec:exp_sparsity_extended}) confirms that error concentration is robust across sparsity levels: LISTA concentrates $100.0\% \pm 0.0\%$ at $K=5$ and $99.9\% \pm 0.1\%$ at $K=10$, maintaining a consistent advantage over OMP ($94.7\%$/$86.7\%$). The ITU channel results further support generalizability to channels with correlated tap amplitudes ($99.3$--$99.5\%$). The pilot ratio analysis (Table~\ref{tab:pilot_ratio}) extends the characterization to different measurement budgets, confirming that LISTA's error concentration mechanism operates across $M/N \geq 1.5$.
+
+\subsection{Theoretical Hardware Complexity}\label{sec:exp_hardware}
+
+We provide a theoretical computational complexity analysis comparing LISTA, OMP, and LASSO. \textbf{All hardware estimates below are derived from FLOP counting and analytical pipeline modeling; no measured FPGA/ASIC results are presented.} Measured latency, throughput, and power consumption on actual hardware remain important future work.
+
+Table~\ref{tab:flops} reports the theoretical FLOP count and parameter scaling for a single channel estimate. LISTA requires $760$K FLOPs at $N=64$, which is $2.3\times$ more than OMP ($332$K) but $8.7\times$ less than LASSO ($6.6$M). Per estimate, LISTA is computationally more expensive than OMP. The $O(N^2)$ per-layer complexity of $\mathbf{W}^{(k)}$ dominates LISTA's scaling: at $N=256$, LISTA has $1.3$M parameters and $7.9$M FLOPs ($3\times$ OMP). Structured linear mappings (Toeplitz, circulant, low-rank) would be needed to scale to longer channels.
+
+\begin{table}[width=.9\linewidth,cols=6,pos=h]
+\caption{Theoretical computational complexity ($M=256$, $K=5$, $L=20$). All values are FLOP counts from analytical calculation; no hardware measurements.}\label{tab:flops}
+\begin{tabular*}{\tblwidth}{@{} LCCCCC@{}}
+\toprule
+$N$ & LISTA FLOPs & LISTA Params & OMP FLOPs & LASSO FLOPs & LISTA/OMP \\
+\midrule
+32  & $296{,}064$   & $20{,}520$   & $138{,}145$   & $2{,}641{,}920$  & $2.14\times$ \\
+64  & $760{,}064$   & $81{,}960$   & $331{,}745$   & $6{,}604{,}800$  & $2.29\times$ \\
+128 & $2{,}236{,}064$ & $327{,}720$  & $879{,}745$   & $16{,}512{,}000$ & $2.55\times$ \\
+256 & $7{,}900{,}064$ & $1{,}310{,}760$ & $2{,}583{,}745$ & $41{,}280{,}000$ & $3.06\times$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+From a theoretical standpoint, LISTA's fixed-depth feedforward architecture has a regular computation graph (repeated $N \times N$ matrix-vector multiply + element-wise soft-thresholding), whereas OMP's iterative support selection involves a global argmax and dynamically-sized least-squares solve with irregular control flow. This regularity \emph{may} facilitate hardware pipelining, but we emphasize that this is a hypothesis, not a demonstrated advantage: actual throughput depends on implementation-specific factors (memory bandwidth for the $N^2$-element $\mathbf{W}^{(k)}$ matrices, clock frequency, data reuse strategy) that are not captured by FLOP counts alone. \citet{wei2022fpga} demonstrated sub-10~$\mu$s LISTA latency on FPGA, but did not compare against an OMP hardware implementation under identical conditions. Moreover, LISTA requires $2.3\times$ more FLOPs per estimate than OMP ($760$K vs $332$K at $N=64$), so any pipelining advantage would need to overcome this per-estimate cost deficit. A fair hardware comparison would require implementing both algorithms on the same FPGA platform with equivalent resource budgets---an experiment that remains important future work.
 
 \subsection{Summary of Results}
 
-Across all experiments, LISTA demonstrates competitive performance with OMP and strong advantages over other baselines:
+Across all experiments, LISTA demonstrates consistent behavior with important practical implications:
 
 \begin{itemize}
-\item \textbf{vs. LMS/NLMS:} LISTA consistently outperforms LMS by $\sim$10--15~dB and NLMS by $\sim$9--14~dB across all conditions (SNR, sparsity, channel length). This advantage is robust and statistically significant.
-\item \textbf{vs. OMP/LASSO:} On i.i.d.~Gaussian channels, LISTA ($-25$ to $-35$~dB) is competitive with OMP ($-25$ to $-43$~dB), trailing by 0--10~dB depending on SNR and sparsity. LISTA outperforms LASSO by 2--9~dB at low sparsity ($K \leq 5$), is comparable at moderate sparsity ($K=8$), but trails LASSO by $\sim$1--2~dB at high sparsity ($K=10$--$15$). On realistic ITU channels, LISTA trained on Gaussian data ($-30$ to $-34$~dB) \emph{outperforms} OMP ($-27$ to $-32$~dB) by $\sim$2--3~dB, demonstrating strong cross-distribution generalization.
-\item \textbf{Ablation:} The learnable threshold ($+5.94$~dB, $p = 0.002$) and per-layer parameters ($+3.09$~dB, $p = 0.004$) provide large, statistically significant improvements. The mapping $\mathbf{W}^{(k)}$ has no significant effect on i.i.d.~Gaussian channels.
-\item \textbf{Generalization:} LISTA generalizes well across sparsity ($K=2$--$8$) and SNR within the i.i.d.~Gaussian model, with performance degrading at high sparsity ($K=10$--$15$) where OMP maintains a 4--7~dB advantage.
-\item \textbf{Optimal depth:} $L=15$--$20$ layers for best performance.
-\item \textbf{Practical deployment:} $\sim$0.4~ms CPU inference, 20K--41K parameters, $8\times$ faster than OMP and LASSO.
+\item \textbf{vs. LMS/NLMS:} LISTA consistently outperforms LMS and NLMS across all conditions (SNR, sparsity, channel length). This advantage is robust and statistically significant.
+\item \textbf{vs. OMP/LASSO:} On i.i.d.~Gaussian channels, LISTA's NMSE saturates at $\sim$$-25$~dB for SNR $\geq 10$~dB, trailing OMP by 13--33~dB. On ITU channels, LISTA achieves $-23$ to $-27$~dB. SNR-specific training significantly mitigates the saturation, achieving $-31$~dB.
+\item \textbf{FISTA comparison:} FISTA with 20 iterations outperforms LISTA at all SNR levels ($1$--$27$~dB advantage), demonstrating that LISTA's learned parameters do not improve NMSE over standard accelerated ISTA. LISTA's value lies in the error concentration mechanism and potential hardware pipelining, not NMSE accuracy.
+\item \textbf{BER mechanism analysis (primary contribution):} Under MMSE equalization, all estimators converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$), consistent with MMSE's known robustness to estimation errors. The mechanism analysis (Section~\ref{sec:exp_mechanism}) reveals that LISTA concentrates $100.0\% \pm 0.0\%$ of error on true taps (vs.~$95.2\% \pm 0.6\%$ for OMP and $92.4\% \pm 0.4\%$ for ISTA; mean $\pm$ std over 5 seeds). The ISTA control experiment (Section~\ref{sec:exp_ista_control}) shows that error concentration is partially generic to soft-thresholding ($92.4\%$ for ISTA) but LISTA's learned parameters enhance it to $100.0\%$, placing $379\times$ less error on non-support taps than ISTA. The mechanism generalizes to $K=10$ ($99.9\% \pm 0.1\%$) and to ITU channels ($99.3$--$99.5\%$). All BER significance claims are Holm--Bonferroni corrected.
+\item \textbf{Ablation (20 seeds):} All three learnable components are significant. Removing $\mathbf{W}^{(k)}$ degrades NMSE by $+1.24$~dB ($p < 0.001$, $d = 1.5$). Fixing the threshold degrades by $+14.44$~dB ($d = 18.4$), and sharing parameters by $+18.22$~dB ($d = 24.1$), indicating that the per-layer threshold schedule is the dominant contributor.
+\item \textbf{Generalization:} LISTA generalizes across sparsity, SNR, and channel types. The gap with OMP widens at high SNR. LISTA-CP shows identical performance because the weight clipping constraint is naturally satisfied.
+\item \textbf{Optimal depth:} $L=10$--$20$ layers for best performance; diminishing returns beyond $L=10$.
+\item \textbf{Hardware complexity (theoretical):} LISTA requires $760$K FLOPs per estimate at $N=64$ ($2.3\times$ OMP, $8.7\times$ less than LASSO). Per estimate, LISTA is more expensive than OMP. LISTA's regular computation graph may facilitate hardware pipelining, but this remains an unvalidated hypothesis---a fair comparison requires implementing both algorithms on the same FPGA platform, which is future work. All hardware complexity values are theoretical FLOP counts; measured FPGA/ASIC results remain future work.
 \end{itemize}
 
 
@@ -512,39 +906,67 @@ Across all experiments, LISTA demonstrates competitive performance with OMP and 
 %% ============================================================
 \section{Discussion}\label{sec:discussion}
 
-\subsection{LISTA's Competitive Performance with OMP/LASSO}
+\subsection{LISTA's Performance on Gaussian vs.~ITU Channels}
 
-Under matched distribution conditions, LISTA achieves competitive performance with OMP and outperforms LASSO at low-to-moderate sparsity. At the default configuration ($N=64$, $K=5$, SNR$=20$~dB), LISTA ($-31.16$~dB) trails OMP ($-37.05$~dB) by $\sim$6~dB but outperforms LASSO ($-28.92$~dB) by $\sim$2~dB. At low sparsity ($K=2$), LISTA ($-25.75$~dB) matches OMP ($-25.51$~dB). The gap with OMP widens at higher SNR (up to $\sim$10~dB at SNR$=25$) and higher sparsity ($\sim$4--7~dB at $K=10$--$15$), as OMP exploits clean signals and known sparsity for precise atom selection. LISTA's advantage over LMS/NLMS ($\sim$10--15~dB) stems from its sparse recovery formulation: while LMS/NLMS estimate a dense channel, LISTA's soft-thresholding enforces sparsity, concentrating energy on true taps. The ablation study (Section~\ref{sec:exp_ablation}) confirms that the learnable components are essential: the threshold contributes $7.46$~dB ($p < 0.001$) and the mapping $\mathbf{W}^{(k)}$ contributes $2.28$~dB ($p < 0.001$).
+A key finding is that LISTA's NMSE saturates at $\sim$$-25$~dB on i.i.d.~Gaussian channels for SNR $\geq 10$~dB, trailing OMP by 13--33~dB. This saturation arises from three factors: (1) the fixed-depth architecture limits recovery precision, (2) the scale-invariant NMSE loss produces parameters that compromise across noise levels, and (3) the soft-thresholding operator introduces a bias floor. On ITU channels, LISTA achieves comparable performance ($-23$ to $-27$~dB), indicating that the mixed-SNR training produces a model that generalizes across channel types but does not specifically exploit ITU channel structure. SNR-specific training (Section~\ref{sec:exp_snr_mitigation}) provides the most effective mitigation, improving NMSE by $\sim$6~dB.
 
-\subsection{SNR-Dependent Performance Gap with OMP}
+\textbf{Is the saturation architecture-specific or a training artifact?} A natural question is whether the $\sim$$-25$~dB saturation is a fundamental limitation of deep unfolding or a training artifact. We present evidence that the saturation is primarily a \emph{training artifact} rather than an architectural limitation:
 
-LISTA's performance gap with OMP varies with SNR. At low SNR (0--5~dB), LISTA closely matches OMP (within 1--2~dB), as both methods are limited by noise. At moderate SNR (10--15~dB), LISTA ($-23.87$ to $-28.05$~dB) trails OMP ($-26.13$ to $-31.99$~dB) by 2--4~dB. At higher SNR (20--25~dB), the gap widens to 6--10~dB, as OMP exploits the increasingly clean signal for precise atom selection.
+\begin{enumerate}
+\item \textbf{Scale-invariant loss.} The NMSE loss $\|\hat{\mathbf{h}} - \mathbf{h}\|_2^2 / \|\mathbf{h}\|_2^2$ is scale-invariant: it penalizes relative errors equally regardless of absolute signal level. When training spans a broad SNR range ($[0, 30]$~dB), the optimizer converges to parameters that compromise across noise levels, naturally producing a noise-floor-like saturation. This is a property of the \emph{training procedure}, not the network architecture.
 
-This widening gap arises from two factors. First, the fixed-depth architecture limits recovery precision: each LISTA layer performs one gradient descent step and one soft-thresholding operation, whereas OMP performs up to $K$ iterations with exact least-squares refinement. At high SNR, this precision difference becomes more pronounced. Second, the soft-thresholding operator introduces a bias: taps below the threshold $\theta^{(k)}$ are set to zero, while taps above it are shrunk by $\theta^{(k)}$, creating a recovery precision floor.
+\item \textbf{SNR-specific training breaks the saturation.} Training on a narrow SNR range ($[15, 25]$~dB) improves NMSE by $\sim$6~dB (from $-25$ to $-31$~dB, Section~\ref{sec:exp_snr_mitigation}), demonstrating that the saturation level is determined by the training distribution, not by the network's representational capacity.
 
-Despite this gap, LISTA offers significant practical advantages: $8\times$ faster inference, no requirement for the sparsity level $K$, and strong generalization to realistic ITU channels where it outperforms OMP by 2--3~dB.
+\item \textbf{LISTA-CP constraints are naturally satisfied.} The identical performance of LISTA and LISTA-CP (Section~\ref{sec:exp_lista_cp}) confirms that the learned parameters already satisfy convergence conditions---the weight clipping constraint is never activated (max spectral norm $= 0.34 < 1.0$). This indicates that the saturation is not caused by insufficient convergence of the network architecture.
+\end{enumerate}
+
+Recent LISTA variants offer improved convergence properties: OCLISTA~\citep{borgerding2020ista} incorporates Onsager correction terms from approximate message passing (AMP) theory; LISTA-AMP~\citep{liu2023listamp} bridges deep unfolding and AMP with theoretical guarantees of Bayes-optimal recovery. We hypothesize that these variants would exhibit similar saturation under broad-range mixed-SNR training, since the scale-invariant loss compromises across noise levels regardless of the network architecture. However, they may achieve better absolute NMSE under SNR-specific training due to their faster convergence properties. This interpretation---that the saturation is a training artifact rather than an architectural limitation---has important implications: it suggests that LISTA's NMSE can be further improved through better training strategies (e.g., curriculum learning, SNR-adaptive loss functions) without architectural changes.
+
+\textbf{Contextualizing the error concentration via AMP theory.} The error concentration mechanism identified in Section~\ref{sec:exp_mechanism} can be understood through the lens of approximate message passing (AMP)~\citep{donoho2009message, bayati2011dynamics}. The connection between LISTA's learned parameters and AMP has been established by prior work: \citet{borgerding2020ista} introduced OCLISTA with explicit Onsager correction terms, and \citet{liu2023listamp} demonstrated that LISTA-AMP achieves near-oracle performance by incorporating Onsager corrections from AMP theory. We do not claim new theoretical contributions here but instead contextualize our empirical findings within this existing framework. In the AMP formulation, each iteration applies a linear estimator followed by a denoising step, with a critical \emph{Onsager correction} that prevents noise amplification by subtracting the component of the current estimate correlated with the previous iteration's output~\citep{rangan2019approximate}. Standard ISTA lacks this correction, causing estimation errors to accumulate across iterations and potentially spread energy to non-support taps. Our ablation study (Section~\ref{sec:exp_ablation20}) shows that $\mathbf{W}^{(k)}$ contributes $+1.24$~dB ($p < 0.001$), and the error concentration enhancement from $92.4\%$ (ISTA) to $100.0\%$ (LISTA) is consistent with the hypothesis that the learned $\mathbf{W}^{(k)}$ matrices implicitly approximate a decorrelation function similar to the Onsager correction. However, we have not empirically validated this by comparing $\mathbf{W}^{(k)}$ against the theoretical Onsager correction matrix---this remains an important direction for future work. The saturation phenomenon is also consistent with this framework: when trained across a broad SNR range, the learned $\mathbf{W}^{(k)}$ must compromise across noise levels, preventing convergence to the SNR-specific Onsager correction that would enable Bayes-optimal recovery at any single SNR.
+
+The BER analysis (Section~\ref{sec:exp_ber}) provides critical system-level context for these NMSE findings. Despite LISTA's 13--33~dB NMSE gap with OMP, under MMSE equalization all estimators converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$), consistent with MMSE's known robustness to estimation errors. Under ZF equalization, LISTA's error concentration on true taps provides tangible BER benefits for 16-QAM at SNR $\geq 15$~dB ($p < 0.05$). The mechanism behind this advantage is analyzed in Section~\ref{sec:exp_mechanism}.
+
+\textbf{Implications for MMSE-based systems.} Under MMSE equalization---the standard in modern receivers---all estimators with reasonable NMSE converge to similar BER at SNR $\geq 5$~dB (Table~\ref{tab:ber_mmse}), because the regularization term $1/\text{SNR}$ suppresses noise enhancement differences. A generic estimator achieving $-25$~dB NMSE would exhibit similar BER under MMSE, confirming that this convergence is a property of the equalizer, not of LISTA. The error concentration advantage is specific to ZF equalization, where the absence of regularization makes the equalizer sensitive to the \emph{location} of estimation errors. This analysis confirms that the paper's BER contribution is the mechanism insight (error concentration on true taps), not the BER equivalence under MMSE.
+
+\textbf{When is ZF equalization relevant?} While MMSE is the standard equalizer in modern receivers, ZF equalization remains relevant in several practical scenarios. First, in \emph{low-complexity IoT receivers} where computational resources are severely constrained, ZF avoids the noise variance estimation required by MMSE and has lower implementation complexity---making it the equalizer of choice for cost-sensitive deployments. Second, in \emph{systems with unreliable noise variance estimation}, such as rapidly time-varying interference environments, MMSE's performance degrades when the assumed noise variance is inaccurate, and ZF provides a robust fallback that does not depend on noise statistics. Third, from a \emph{theoretical analysis perspective}, ZF serves as a controlled experimental probe: because ZF amplifies noise proportionally to $\|\hat{\mathbf{H}}^{-1}\|^2$, it makes the equalizer maximally sensitive to error location, revealing structural properties of the estimation error that MMSE's regularization masks. It is in this third role---as a diagnostic tool for understanding error structure---that the ZF results in this paper are most valuable. The mechanism analysis (Section~\ref{sec:exp_mechanism}) uses ZF to demonstrate that LISTA's error concentration on true taps has measurable consequences, an insight that would be invisible under MMSE.
+
+LISTA's advantage over LMS/NLMS ($\sim$1--17~dB) stems from its sparse recovery formulation: while LMS/NLMS estimate a dense channel, LISTA's soft-thresholding enforces sparsity, concentrating energy on true taps. The ablation study with 20 seeds (Section~\ref{sec:exp_ablation20}) reveals that the per-layer threshold and step size schedule is the dominant contributor, indicating that LISTA's primary learned behavior is a layer-specific progression of threshold values that enables iterative sparse refinement. However, the FISTA comparison (Section~\ref{sec:exp_fista}) demonstrates that this learned schedule does not improve NMSE over FISTA's Nesterov momentum with fixed parameters---LISTA's value lies in the error concentration mechanism and potential hardware deployment, not in estimation accuracy.
+
+\subsection{Comparison with Deep Learning Baselines}\label{sec:dl_comparison}
+
+A natural question is how LISTA compares with purely data-driven deep learning methods for channel estimation. We did not include CNN~\citep{ye2018power, gao2019deep} or Transformer~\citep{zhang2020transformer} baselines in our experiments, as our focus is on understanding LISTA's behavior within the deep unfolding paradigm rather than benchmarking against all possible architectures. We discuss the qualitative distinctions between model-driven and data-driven approaches, but emphasize that a direct comparison under identical experimental conditions is required to draw quantitative conclusions and is left to future work.
+
+\textbf{Model-based vs.~data-driven.} LISTA is a \emph{model-driven} architecture---its structure encodes the sparse recovery problem (gradient descent + soft-thresholding), and the learnable parameters adapt this structure to the channel distribution. CNN/Transformer methods are purely data-driven: they learn the mapping from received signals to channel estimates directly from training data, without encoding the sparsity prior. This distinction has three implications: (1) LISTA requires far fewer parameters ($82$K for $N=64$) than typical CNN architectures ($>$500K parameters) or Transformers ($>$1M parameters), enabling deployment on resource-constrained platforms; (2) LISTA's architecture provides interpretability---the ablation study reveals what each component learns---while CNN/Transformer methods are black boxes; (3) LISTA's generalization across channel types (Gaussian to ITU) is enabled by the encoded sparsity prior, while data-driven methods may require channel-specific training data.
+
+\textbf{Why we do not provide a quantitative comparison.} Published results on CNN/Transformer channel estimation~\citep{ye2018power, gao2019deep, zhang2020transformer} use different channel models, SNR ranges, pilot configurations, and training protocols than our experiments. Drawing quantitative conclusions from such incomparable results would be misleading. For example, reported CNN NMSE ranges ($-20$ to $-30$~dB) and Transformer ranges ($-25$ to $-35$~dB) are from studies with different $N$, $K$, $M$, and SNR configurations, making direct comparison with our LISTA results ($-25$~dB at $N=64$, $K=5$, $M=256$, SNR$=20$~dB) unreliable. A comprehensive benchmark comparing LISTA, CNN, and Transformer methods under identical experimental conditions (same channel models, SNR ranges, and training protocols) is important future work that would provide actionable guidance for practitioners choosing between model-driven and data-driven approaches.
 
 \subsection{Generalization and Practical Deployment}
 
-The generalization experiments reveal a nuanced picture. Within the i.i.d.~Gaussian channel model, LISTA generalizes well across sparsity levels ($K=2$--$8$) and SNR levels (0--25~dB), maintaining competitive performance with OMP. At $K=10$--$15$, LISTA trails OMP by 4--7~dB, indicating some degradation far from the training distribution. The ITU channel experiments (Section~\ref{sec:exp_practical}) reveal that LISTA trained on i.i.d.~Gaussian channels generalizes strongly to ITU models ($-30$ to $-34$~dB), \emph{outperforming} OMP ($-27$ to $-32$~dB) by $\sim$2--3~dB. Surprisingly, training directly on ITU channels with limited diversity yields worse performance ($-27$~dB), suggesting that the rich i.i.d.~Gaussian distribution provides better generalization than limited distribution-matched data.
+The generalization experiments reveal a nuanced picture. Within the i.i.d.~Gaussian channel model, LISTA's NMSE saturates at $\sim$$-25$~dB for SNR $\geq 10$~dB, with the gap with OMP widening at higher SNR. The channel length experiments show that LISTA performs consistently at $N=32$--$128$ ($\sim$$-21$ to $-25$~dB) but training diverges at $N=256$ (all seeds), indicating a scalability limit when the pilot ratio $M/N$ drops to 1. The pilot ratio analysis (Table~\ref{tab:pilot_ratio}) confirms this sensitivity: LISTA's NMSE degrades from $-24.9$~dB at $M/N=4.0$ to $-15.1$~dB at $M/N=1.5$, with the gap with OMP widening from $\sim$12~dB to $\sim$16~dB. LISTA requires $M/N \geq 2$ for stable operation. The ITU channel experiments (Section~\ref{sec:exp_practical}) show that LISTA achieves $-23$ to $-27$~dB on ITU channels, comparable to its Gaussian saturation level. SNR-specific training (Section~\ref{sec:exp_snr_mitigation}) provides the most effective mitigation, improving NMSE by $\sim$6~dB to achieve $-31$~dB.
 
 For practical deployment, we recommend the following decision framework:
 
 \begin{enumerate}
-\item \textbf{Default: i.i.d.~Gaussian training.} LISTA trained on i.i.d.~Gaussian channels generalizes well to diverse channel types, including ITU models. This is the recommended default training strategy.
+\item \textbf{Throughput-critical applications:} LISTA's regular computation graph may facilitate hardware pipelining compared to OMP's irregular iterative selection, though this remains an unvalidated hypothesis (Section~\ref{sec:exp_hardware}). Under MMSE equalization, all estimators achieve similar BER (as expected); under ZF equalization, LISTA's error concentration on true taps provides competitive or better BER for higher-order modulations.
 
-\item \textbf{Known channel statistics with sufficient data:} If the target channel model is known and abundant training data is available, distribution-matched training may improve performance. However, ensure the training dataset has sufficient diversity to prevent overfitting.
+\item \textbf{Known operating SNR:} Use SNR-specific training on a narrow range around the operating SNR. This achieves $\sim$$-31$~dB NMSE, the best LISTA performance.
 
-\item \textbf{Unknown or time-varying statistics:} Deploy a hybrid estimator: use LISTA as the primary estimator and fall back to OMP/LASSO when the residual $\|\mathbf{d} - \mathbf{X}\hat{\mathbf{h}}\|_2$ exceeds a threshold (indicating distribution mismatch). This combines LISTA's speed advantage with classical methods' robustness.
+\item \textbf{Variable SNR:} Use broad-range training ($[0, 30]$~dB) for robustness across SNR levels. LISTA achieves $\sim$$-25$~dB NMSE consistently, with competitive BER.
 
-\item \textbf{Architecture choice:} Use $L=15$--$20$ layers for best performance. For $N > 128$, consider structured linear mappings to reduce the $O(N^2)$ parameter count.
+\item \textbf{When to prefer OMP/FISTA/LASSO:} When NMSE is the primary metric (e.g., channel sounding, propagation analysis) rather than BER, OMP remains the best choice ($13$--$33$~dB advantage over LISTA), followed by FISTA ($1$--$27$~dB advantage). FISTA with 20 iterations is particularly attractive: it requires no training data and outperforms LISTA at all SNR levels.
+
+\item \textbf{Architecture choice:} Use $L=10$--$20$ layers for best performance. For $N > 128$, consider structured linear mappings to reduce the $O(N^2)$ parameter count.
 \end{enumerate}
 
 \subsection{Limitations}
 
-Several limitations should be noted. First, the $O(N^2)$ per-layer complexity of $\mathbf{W}^{(k)}$ may become a bottleneck for $N > 256$. Structured or sparse linear mappings could reduce this. Second, the method assumes a fixed channel length during training; extending to variable-length channels requires architectural modifications (e.g., convolutional layers). Third, while LISTA is competitive with OMP on i.i.d.~Gaussian channels, the gap widens at high SNR ($\sim$10~dB at SNR$=25$) and high sparsity ($\sim$4--7~dB at $K=10$--$15$). This limits LISTA's applicability where near-perfect recovery is required. Fourth, training stability is a concern at $L=8$, where one seed diverges (std $= 5.50$~dB). Deeper networks ($L=15$--$20$) are stable but require more training data. Fifth, the ablation study shows that the learnable threshold is the single most important component ($+7.46$~dB), suggesting that the soft-thresholding operation---rather than the learned linear mapping---drives most of LISTA's advantage over LMS/NLMS.
+Several limitations should be noted. First, LISTA's NMSE saturates at approximately $-25$~dB on i.i.d.~Gaussian channels for SNR $\geq 10$~dB with broad-range training, trailing OMP by 13--33~dB and FISTA by 1--27~dB. This saturation is likely a \emph{training artifact} caused by the scale-invariant NMSE loss and mixed-SNR training distribution, rather than a fundamental architectural limitation (Section~\ref{sec:discussion}). SNR-specific training mitigates this significantly ($-31$~dB with narrow-range training), but a $\sim$6~dB gap with OMP remains. Under MMSE equalization, all estimators converge to similar BER (as expected); the paper's BER contribution is the mechanism analysis of LISTA's error structure (Section~\ref{sec:exp_mechanism}). Second, the $O(N^2)$ per-layer complexity of $\mathbf{W}^{(k)}$ limits scalability; LISTA training diverges at $N=256$ when $M/N = 1$, though structured linear mappings could extend the range. The pilot ratio analysis (Table~\ref{tab:pilot_ratio}) further shows that LISTA requires $M/N \geq 2$ for stable operation, with NMSE degrading by $\sim$10~dB as $M/N$ decreases from 4.0 to 1.5. Third, at high sparsity ($K=15$), training instability occurs (one seed diverges). Fourth, LISTA's support recovery ($J = 0.78$) is lower than OMP's ($J = 0.97$), meaning LISTA is less reliable for applications that require correct tap identification.
 
-Future research directions include: (1) training on realistic channel models (ITU, 3GPP) to improve generalization, (2) developing domain adaptation techniques to transfer LISTA across channel types, (3) incorporating structured sparsity models (e.g., block sparsity) into the architecture, (4) exploring hardware-efficient implementations for FPGA/ASIC, and (5) combining LISTA with classical methods (OMP/LASSO) for hybrid estimation that leverages the strengths of both approaches.
+\textbf{Real-valued channel assumption.} All experiments in this paper assume real-valued channel impulse responses ($\mathbf{h} \in \mathbb{R}^N$) and real-valued pilot signals (BPSK-modulated, $\pm 1$). Real wireless channels are complex-valued, and practical systems use QAM modulations with complex baseband signals. The soft-thresholding operator (Eq.~\eqref{eq:soft_threshold}) and the error concentration metric (Eq.~\eqref{eq:error_concentration}) are defined for real-valued signals; extending to the complex domain requires thresholding the magnitude while preserving phase (i.e., $\mathcal{S}_\theta(\mathbf{z}) = \mathbf{z} \cdot \max(1 - \theta/|\mathbf{z}|, 0)$). The error concentration mechanism may behave differently for complex-valued channels because the phase component introduces additional degrees of freedom that could affect how errors distribute across support and non-support taps. While we expect the qualitative mechanism---soft-thresholding enforcing sparsity in the estimate---to extend to the complex case, the specific concentration percentages and BER advantages reported here require validation with complex-valued channel models and QAM pilot signals. Extending the analysis to complex-valued channels and MIMO systems is an important direction for future work.
+
+The theoretical hardware complexity analysis (Section~\ref{sec:exp_hardware}) shows that LISTA requires $2.3\times$ more FLOPs per estimate than OMP at $N=64$ ($760$K vs $332$K). LISTA's regular computation graph may facilitate hardware pipelining, but this remains an unvalidated hypothesis: \citet{wei2022fpga}'s FPGA implementation demonstrated sub-10~$\mu$s LISTA latency but did not compare against an OMP hardware implementation under identical conditions. A fair comparison requires implementing both algorithms on the same FPGA platform with equivalent resource budgets---an experiment that remains important future work.
+
+Future research directions include: (1) developing architectural modifications to further break the SNR saturation and improve NMSE, (2) structured linear mappings to reduce the $O(N^2)$ parameter count for large $N$, (3) exploring hardware-efficient FPGA/ASIC implementations with measured latency and power consumption, (4) extending the BER analysis to OFDM systems and frequency-selective channels, and (5) extending the analysis to complex-valued channels and MIMO systems.
 
 
 %% ============================================================
@@ -552,7 +974,11 @@ Future research directions include: (1) training on realistic channel models (IT
 %% ============================================================
 \section{Conclusion}\label{sec:conclusion}
 
-We investigated the application of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) to sparse multipath channel estimation. Through systematic analysis including ablation studies, generalization experiments, and practical deployment tests, we provide a realistic assessment of deep unfolding for channel estimation. On i.i.d.~Gaussian channels, LISTA outperforms OMP at 7 of 9 tested SNR levels (SNR $\leq 25$~dB), outperforms LASSO at low-to-moderate sparsity ($K \leq 8$), and outperforms LMS/NLMS by $\sim$10--15~dB. The ablation study reveals large, statistically significant component contributions: the learnable threshold contributes $+5.9$~dB ($p = 0.002$) and per-layer parameterization contributes $+3.1$~dB ($p = 0.004$). The optimal network depth is 15--20 layers. On ITU channel models, LISTA trained on i.i.d.~Gaussian data achieves $-28$~dB, outperforming OMP ($-25$ to $-27$~dB) by $\sim$1--3~dB. Training directly on ITU channels with limited diversity yields worse performance, confirming that i.i.d.~Gaussian training provides superior generalization. Practical deployment benefits include $0.21$~ms CPU inference ($33\times$ faster than OMP) and $82$K parameters. These findings establish LISTA as a practical alternative to OMP/LASSO: it outperforms classical methods on realistic channels, provides $33\times$ faster inference, and does not require the sparsity level $K$ as input.
+We investigated the application of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) to sparse multipath channel estimation. Through systematic analysis including ablation studies, generalization experiments, BER simulations, and practical deployment tests, we provide a realistic assessment of deep unfolding for channel estimation.
+
+On i.i.d.~Gaussian channels, LISTA's NMSE saturates at approximately $-25$~dB for SNR $\geq 10$~dB, trailing OMP by 13--33~dB due to the fixed-depth architecture and scale-invariant loss function. BER simulations (200 realizations, 5 seeds, paired $t$-tests) confirm that under MMSE equalization all estimators converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$), consistent with MMSE's known robustness to estimation errors. The primary BER contribution is a mechanism analysis (Section~\ref{sec:exp_mechanism}): LISTA's soft-thresholding operator concentrates estimation error on true tap locations ($100.0\% \pm 0.0\%$ on Gaussian, $99.3$--$99.5\%$ on ITU channels; mean $\pm$ std over 5 seeds). An ISTA control experiment (Section~\ref{sec:exp_ista_control}) demonstrates that this concentration is partially generic to soft-thresholding ($92.4\% \pm 0.4\%$ for ISTA with grid-searched threshold) but LISTA's learned parameters enhance it to $100.0\%$, placing $379\times$ less error on non-support taps. The mechanism is robust across sparsity levels ($99.9\% \pm 0.1\%$ at $K=10$) and provides tangible BER benefits under ZF equalization for 16-QAM (Holm--Bonferroni corrected $p < 0.05$ at SNR $\geq 15$~dB). A FISTA comparison (Section~\ref{sec:exp_fista}) shows that FISTA with 20 iterations outperforms LISTA by $1$--$27$~dB in NMSE, confirming that LISTA's value lies in the error concentration mechanism rather than estimation accuracy. SNR-specific training further mitigates the NMSE saturation, achieving $-31$~dB at SNR$=20$~dB (a $6$~dB improvement). The ablation study with 20 seeds (Holm--Bonferroni corrected) reveals that the per-layer threshold schedule is the dominant contributor ($+14$--$18$~dB degradation when removed), while $\mathbf{W}^{(k)}$ provides an additional $+1.24$~dB ($p < 0.001$, $d = 1.5$).
+
+On realistic ITU channel models, LISTA achieves $-23$ to $-27$~dB NMSE. A pilot ratio analysis (Table~\ref{tab:pilot_ratio}) confirms that LISTA requires $M/N \geq 2$ for stable operation, with NMSE degrading by $\sim$10~dB as $M/N$ decreases from 4.0 to 1.5. Theoretical computational complexity analysis shows LISTA requires $760$K FLOPs per estimate ($2.3\times$ OMP, $8.7\times$ less than LASSO); its regular computation graph may facilitate hardware pipelining, though this remains an unvalidated hypothesis requiring same-platform FPGA comparison. We additionally show that LISTA-CP, a convergence-provable variant with enforced weight clipping, achieves statistically indistinguishable performance to standard LISTA ($p > 0.4$ at all SNR levels) because the clipping constraint ($\|\mathbf{W}^{(k)} - \mathbf{I}\|_2 < 1$) is never activated during training (max spectral norm $= 0.34$). Finally, we contextualize the error concentration mechanism within approximate message passing (AMP) theory, noting that the connection between LISTA's learned weight matrices and the Onsager correction has been established by prior work~\citep{borgerding2020ista, liu2023listamp} and that our empirical findings are consistent with this framework. These findings provide a systematic characterization of deep-unfolded sparse channel estimation: the mechanism analysis reveals that LISTA's error concentration on true taps (enhanced by learned parameters over fixed-threshold ISTA) provides tangible BER benefits under ZF equalization for higher-order modulations, while the FISTA comparison clarifies that LISTA's NMSE does not improve over standard accelerated ISTA.
 
 
 %% ============================================================

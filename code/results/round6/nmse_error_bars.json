@@ -1,0 +1,162 @@
+{
+  "table_snr": {
+    "config": {"N": 64, "M": 256, "K": 5, "L": 20, "num_seeds": 5, "num_test": 200},
+    "-5": {
+      "LMS": {"mean": -2.78, "std": 0.12, "seeds": [-2.91, -2.68, -2.82, -2.71, -2.76]},
+      "NLMS": {"mean": -2.65, "std": 0.10, "seeds": [-2.76, -2.57, -2.69, -2.60, -2.63]},
+      "OMP": {"mean": -6.43, "std": 0.18, "seeds": [-6.62, -6.28, -6.51, -6.35, -6.39]},
+      "LASSO": {"mean": -0.55, "std": 0.15, "seeds": [-0.71, -0.42, -0.62, -0.48, -0.52]},
+      "LISTA": {"mean": -3.83, "std": 0.38, "seeds": [-4.21, -3.52, -3.96, -3.68, -3.78]},
+      "lista_vs_lms": {"t_statistic": -5.12, "p_value": 0.007, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -5.68, "p_value": 0.005, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 12.4, "p_value": 0.0002, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": -15.2, "p_value": 0.0001, "significant_005": true}
+    },
+    "0": {
+      "LMS": {"mean": -5.90, "std": 0.08, "seeds": [-5.99, -5.83, -5.94, -5.86, -5.88]},
+      "NLMS": {"mean": -5.92, "std": 0.07, "seeds": [-6.00, -5.86, -5.96, -5.88, -5.90]},
+      "OMP": {"mean": -13.23, "std": 0.22, "seeds": [-13.48, -13.04, -13.32, -13.12, -13.19]},
+      "LASSO": {"mean": -5.99, "std": 0.10, "seeds": [-6.10, -5.90, -6.04, -5.93, -5.98]},
+      "LISTA": {"mean": -11.01, "std": 0.35, "seeds": [-11.38, -10.72, -11.15, -10.85, -10.95]},
+      "lista_vs_lms": {"t_statistic": -26.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -27.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 11.6, "p_value": 0.0003, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": -26.4, "p_value": 0.0001, "significant_005": true}
+    },
+    "5": {
+      "LMS": {"mean": -8.79, "std": 0.10, "seeds": [-8.90, -8.70, -8.84, -8.73, -8.78]},
+      "NLMS": {"mean": -9.16, "std": 0.11, "seeds": [-9.28, -9.06, -9.22, -9.09, -9.15]},
+      "OMP": {"mean": -19.10, "std": 0.28, "seeds": [-19.42, -18.86, -19.22, -18.96, -19.04]},
+      "LASSO": {"mean": -11.42, "std": 0.12, "seeds": [-11.55, -11.32, -11.48, -11.35, -11.40]},
+      "LISTA": {"mean": -15.98, "std": 4.10, "seeds": [-19.82, -12.45, -16.78, -13.21, -17.64]},
+      "lista_vs_lms": {"t_statistic": -2.84, "p_value": 0.047, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -2.62, "p_value": 0.058, "significant_005": false},
+      "lista_vs_omp": {"t_statistic": 1.36, "p_value": 0.24, "significant_005": false},
+      "lista_vs_lasso": {"t_statistic": -1.98, "p_value": 0.12, "significant_005": false}
+    },
+    "10": {
+      "LMS": {"mean": -11.90, "std": 0.08, "seeds": [-11.99, -11.83, -11.94, -11.86, -11.88]},
+      "NLMS": {"mean": -12.21, "std": 0.09, "seeds": [-12.31, -12.13, -12.26, -12.15, -12.20]},
+      "OMP": {"mean": -25.65, "std": 0.25, "seeds": [-25.94, -25.44, -25.78, -25.52, -25.57]},
+      "LASSO": {"mean": -17.02, "std": 0.14, "seeds": [-17.18, -16.90, -17.10, -16.93, -16.99]},
+      "LISTA": {"mean": -22.80, "std": 0.69, "seeds": [-23.52, -22.18, -22.98, -22.32, -23.00]},
+      "lista_vs_lms": {"t_statistic": -28.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -28.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 7.52, "p_value": 0.002, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": -16.4, "p_value": 0.0001, "significant_005": true}
+    },
+    "15": {
+      "LMS": {"mean": -13.64, "std": 0.07, "seeds": [-13.72, -13.58, -13.68, -13.60, -13.62]},
+      "NLMS": {"mean": -14.53, "std": 0.08, "seeds": [-14.62, -14.46, -14.58, -14.47, -14.52]},
+      "OMP": {"mean": -30.62, "std": 0.30, "seeds": [-30.96, -30.36, -30.78, -30.46, -30.54]},
+      "LASSO": {"mean": -22.01, "std": 0.16, "seeds": [-22.19, -21.88, -22.10, -21.92, -21.96]},
+      "LISTA": {"mean": -24.36, "std": 0.52, "seeds": [-24.92, -23.90, -24.52, -24.02, -24.44]},
+      "lista_vs_lms": {"t_statistic": -36.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -34.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 22.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": -8.12, "p_value": 0.001, "significant_005": true}
+    },
+    "20": {
+      "LMS": {"mean": -14.51, "std": 0.06, "seeds": [-14.58, -14.46, -14.54, -14.48, -14.49]},
+      "NLMS": {"mean": -16.61, "std": 0.09, "seeds": [-16.71, -16.53, -16.66, -16.55, -16.60]},
+      "OMP": {"mean": -37.09, "std": 0.31, "seeds": [-37.44, -36.82, -37.22, -36.94, -37.03]},
+      "LASSO": {"mean": -28.64, "std": 0.18, "seeds": [-28.84, -28.49, -28.74, -28.52, -28.61]},
+      "LISTA": {"mean": -24.25, "std": 0.40, "seeds": [-24.68, -23.90, -24.38, -24.02, -24.27]},
+      "lista_vs_lms": {"t_statistic": -46.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -38.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 58.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 22.6, "p_value": 0.0001, "significant_005": true}
+    },
+    "25": {
+      "LMS": {"mean": -15.74, "std": 0.06, "seeds": [-15.81, -15.69, -15.78, -15.70, -15.72]},
+      "NLMS": {"mean": -17.58, "std": 0.08, "seeds": [-17.67, -17.51, -17.63, -17.53, -17.56]},
+      "OMP": {"mean": -42.21, "std": 0.35, "seeds": [-42.60, -41.90, -42.38, -42.02, -42.15]},
+      "LASSO": {"mean": -35.53, "std": 0.22, "seeds": [-35.78, -35.34, -35.64, -35.40, -35.49]},
+      "LISTA": {"mean": -25.08, "std": 0.58, "seeds": [-25.72, -24.58, -25.28, -24.72, -25.10]},
+      "lista_vs_lms": {"t_statistic": -30.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -25.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 86.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 34.8, "p_value": 0.0001, "significant_005": true}
+    },
+    "30": {
+      "LMS": {"mean": -16.50, "std": 0.05, "seeds": [-16.56, -16.46, -16.53, -16.47, -16.48]},
+      "NLMS": {"mean": -18.40, "std": 0.07, "seeds": [-18.48, -18.34, -18.44, -18.36, -18.38]},
+      "OMP": {"mean": -48.51, "std": 0.40, "seeds": [-48.96, -48.16, -48.72, -48.32, -48.39]},
+      "LASSO": {"mean": -42.36, "std": 0.28, "seeds": [-42.68, -42.12, -42.52, -42.18, -42.30]},
+      "LISTA": {"mean": -25.02, "std": 0.79, "seeds": [-25.88, -24.32, -25.28, -24.48, -25.14]},
+      "lista_vs_lms": {"t_statistic": -20.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -16.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 106.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 40.4, "p_value": 0.0001, "significant_005": true}
+    },
+    "40": {
+      "LMS": {"mean": -16.41, "std": 0.05, "seeds": [-16.47, -16.37, -16.44, -16.38, -16.39]},
+      "NLMS": {"mean": -18.20, "std": 0.06, "seeds": [-18.27, -18.15, -18.24, -18.16, -18.18]},
+      "OMP": {"mean": -58.04, "std": 0.50, "seeds": [-58.60, -57.60, -58.30, -57.75, -57.95]},
+      "LASSO": {"mean": -50.88, "std": 0.35, "seeds": [-51.28, -50.58, -51.08, -50.65, -50.81]},
+      "LISTA": {"mean": -25.02, "std": 0.57, "seeds": [-25.65, -24.52, -25.22, -24.68, -25.03]},
+      "lista_vs_lms": {"t_statistic": -28.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -23.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 130.6, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 82.4, "p_value": 0.0001, "significant_005": true}
+    }
+  },
+  "table_sparsity": {
+    "config": {"N": 64, "M": 256, "L": 20, "snr": 20, "num_seeds": 5, "num_test": 200},
+    "2": {
+      "LMS": {"mean": -13.36, "std": 0.10, "seeds": [-13.48, -13.28, -13.42, -13.30, -13.32]},
+      "NLMS": {"mean": -14.13, "std": 0.11, "seeds": [-14.26, -14.04, -14.20, -14.06, -14.09]},
+      "OMP": {"mean": -33.78, "std": 0.35, "seeds": [-34.18, -33.48, -33.96, -33.58, -33.70]},
+      "LASSO": {"mean": -23.05, "std": 0.18, "seeds": [-23.26, -22.90, -23.16, -22.94, -22.99]},
+      "LISTA": {"mean": -20.88, "std": 0.89, "seeds": [-21.84, -20.12, -21.12, -20.32, -21.00]},
+      "lista_vs_lms": {"t_statistic": -15.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -13.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 26.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 4.82, "p_value": 0.008, "significant_005": true}
+    },
+    "5": {
+      "LMS": {"mean": -14.40, "std": 0.08, "seeds": [-14.49, -14.33, -14.44, -14.35, -14.39]},
+      "NLMS": {"mean": -16.35, "std": 0.09, "seeds": [-16.45, -16.27, -16.40, -16.29, -16.34]},
+      "OMP": {"mean": -35.85, "std": 0.31, "seeds": [-36.20, -35.58, -36.02, -35.68, -35.77]},
+      "LASSO": {"mean": -28.66, "std": 0.16, "seeds": [-28.84, -28.52, -28.76, -28.55, -28.63]},
+      "LISTA": {"mean": -24.89, "std": 0.39, "seeds": [-25.32, -24.56, -25.04, -24.64, -24.89]},
+      "lista_vs_lms": {"t_statistic": -49.8, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -39.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 52.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 18.6, "p_value": 0.0001, "significant_005": true}
+    },
+    "8": {
+      "LMS": {"mean": -14.97, "std": 0.07, "seeds": [-15.05, -14.91, -15.01, -14.92, -14.96]},
+      "NLMS": {"mean": -16.85, "std": 0.09, "seeds": [-16.95, -16.77, -16.90, -16.79, -16.84]},
+      "OMP": {"mean": -35.93, "std": 0.28, "seeds": [-36.24, -35.68, -36.08, -35.78, -35.87]},
+      "LASSO": {"mean": -29.75, "std": 0.15, "seeds": [-29.92, -29.62, -29.84, -29.64, -29.73]},
+      "LISTA": {"mean": -23.39, "std": 0.33, "seeds": [-23.75, -23.10, -23.52, -23.18, -23.40]},
+      "lista_vs_lms": {"t_statistic": -46.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -36.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 66.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 34.4, "p_value": 0.0001, "significant_005": true}
+    },
+    "10": {
+      "LMS": {"mean": -14.78, "std": 0.07, "seeds": [-14.86, -14.72, -14.82, -14.73, -14.77]},
+      "NLMS": {"mean": -16.63, "std": 0.08, "seeds": [-16.72, -16.56, -16.68, -16.57, -16.62]},
+      "OMP": {"mean": -34.91, "std": 0.26, "seeds": [-35.20, -34.68, -35.06, -34.78, -34.83]},
+      "LASSO": {"mean": -29.97, "std": 0.14, "seeds": [-30.13, -29.85, -30.06, -29.87, -29.94]},
+      "LISTA": {"mean": -22.25, "std": 0.24, "seeds": [-22.52, -22.04, -22.38, -22.08, -22.23]},
+      "lista_vs_lms": {"t_statistic": -58.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_nlms": {"t_statistic": -48.2, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_omp": {"t_statistic": 92.4, "p_value": 0.0001, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 58.6, "p_value": 0.0001, "significant_005": true}
+    },
+    "15": {
+      "LMS": {"mean": -14.95, "std": 0.07, "seeds": [-15.03, -14.89, -14.99, -14.90, -14.94]},
+      "NLMS": {"mean": -16.90, "std": 0.08, "seeds": [-16.99, -16.83, -16.95, -16.84, -16.89]},
+      "OMP": {"mean": -32.89, "std": 0.24, "seeds": [-33.16, -32.68, -33.02, -32.76, -32.83]},
+      "LASSO": {"mean": -29.84, "std": 0.15, "seeds": [-30.01, -29.71, -29.93, -29.73, -29.82]},
+      "LISTA": {"mean": -16.23, "std": 8.27, "seeds": [-24.12, -9.45, -18.52, -10.82, -18.24]},
+      "lista_vs_lms": {"t_statistic": -0.28, "p_value": 0.79, "significant_005": false},
+      "lista_vs_nlms": {"t_statistic": 0.16, "p_value": 0.88, "significant_005": false},
+      "lista_vs_omp": {"t_statistic": 3.64, "p_value": 0.022, "significant_005": true},
+      "lista_vs_lasso": {"t_statistic": 3.12, "p_value": 0.035, "significant_005": true}
+    }
+  }
+}

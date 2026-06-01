@@ -576,6 +576,71 @@ def generate_sparse_channel_test(
     )
 
 
+def generate_complex_sparse_channel_data(
+    num_samples: int = 10000,
+    channel_length: int = 64,
+    sparsity: int = 5,
+    snr_db: float = 20.0,
+    pilot_length: int = None
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Generate complex-valued sparse channel estimation data.
+
+    Uses QPSK pilots and complex-valued channels.
+    Soft-thresholding operates on magnitude while preserving phase.
+
+    Args:
+        num_samples: Number of channel realizations
+        channel_length: Length of channel impulse response (N)
+        sparsity: Number of non-zero taps (K)
+        snr_db: Signal-to-noise ratio
+        pilot_length: Length of pilot signal (default: 2 * channel_length)
+
+    Returns:
+        x: (num_samples, pilot_length) complex - QPSK pilot signal
+        d: (num_samples, pilot_length) complex - received signal
+        h: (num_samples, channel_length) complex - true sparse channel
+    """
+    if pilot_length is None:
+        pilot_length = 2 * channel_length
+
+    # Generate complex sparse channels
+    h = torch.zeros(num_samples, channel_length, dtype=torch.cfloat)
+    for i in range(num_samples):
+        tap_positions = torch.randperm(channel_length)[:sparsity]
+        # Complex tap values with exponential decay
+        tap_real = torch.randn(sparsity) * torch.exp(
+            -torch.arange(sparsity).float() * 0.2
+        )
+        tap_imag = torch.randn(sparsity) * torch.exp(
+            -torch.arange(sparsity).float() * 0.2
+        )
+        h[i, tap_positions] = torch.complex(tap_real, tap_imag)
+
+    # Generate QPSK pilot signals: (±1±j)/√2
+    x_real = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
+    x_imag = 2 * (torch.rand(num_samples, pilot_length) > 0.5).float() - 1
+    x = torch.complex(x_real, x_imag) / np.sqrt(2)
+
+    # Convolve: d = x * h + noise (complex)
+    d = torch.zeros(num_samples, pilot_length, dtype=torch.cfloat)
+    for i in range(num_samples):
+        x_i = x[i].unsqueeze(0).unsqueeze(0)
+        h_i = h[i].unsqueeze(0).unsqueeze(0)
+        d[i] = torch.nn.functional.conv1d(
+            x_i, torch.flip(h_i, [2]), padding=channel_length - 1
+        ).squeeze()[:pilot_length]
+
+    # Add complex AWGN
+    sig_power = torch.mean(torch.abs(d) ** 2).item()
+    noise_power = sig_power / (10 ** (snr_db / 10))
+    noise = (torch.randn(num_samples, pilot_length) +
+             1j * torch.randn(num_samples, pilot_length)) * np.sqrt(noise_power / 2)
+    d = d + noise
+
+    return x, d, h
+
+
 if __name__ == "__main__":
     # Test data generation
     print("Generating echo cancellation data...")

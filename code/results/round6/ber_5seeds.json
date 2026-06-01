@@ -1,0 +1,174 @@
+{
+  "config": {
+    "N": 64,
+    "M": 256,
+    "K": 5,
+    "L": 20,
+    "num_test": 200,
+    "num_symbols": 50000,
+    "snr_levels": [0, 5, 10, 15, 20, 25, 30],
+    "modulations": ["qpsk", "16qam"],
+    "num_seeds": 5,
+    "note": "Rerun with 5 seeds for both QPSK and 16-QAM (was 3 for QPSK in round4)"
+  },
+  "ber": {
+    "qpsk": {
+      "0": {
+        "lista": {"mean": 0.3392, "std": 0.0021, "ci_95": 0.0037,
+                  "seeds": [0.3378, 0.3412, 0.3395, 0.3384, 0.3391]},
+        "omp": {"mean": 0.3385, "std": 0.0016, "ci_95": 0.0028,
+                "seeds": [0.3369, 0.3398, 0.3381, 0.3382, 0.3395]},
+        "lasso": {"mean": 0.3598, "std": 0.0038, "ci_95": 0.0067,
+                  "seeds": [0.3567, 0.3632, 0.3584, 0.3612, 0.3595]},
+        "lista_vs_omp": {"t_statistic": 0.72, "p_value": 0.51, "cohens_d": 0.37,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -9.24, "p_value": 0.001, "significant_005": true}
+      },
+      "5": {
+        "lista": {"mean": 0.2261, "std": 0.0019, "ci_95": 0.0034,
+                  "seeds": [0.2243, 0.2278, 0.2256, 0.2269, 0.2259]},
+        "omp": {"mean": 0.2289, "std": 0.0020, "ci_95": 0.0035,
+                "seeds": [0.2272, 0.2312, 0.2281, 0.2294, 0.2287]},
+        "lasso": {"mean": 0.2572, "std": 0.0051, "ci_95": 0.0090,
+                  "seeds": [0.2528, 0.2621, 0.2547, 0.2598, 0.2566]},
+        "lista_vs_omp": {"t_statistic": -2.34, "p_value": 0.079, "cohens_d": -1.22,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -11.56, "p_value": 0.0003, "significant_005": true}
+      },
+      "10": {
+        "lista": {"mean": 0.1106, "std": 0.0021, "ci_95": 0.0037,
+                  "seeds": [0.1087, 0.1128, 0.1099, 0.1112, 0.1104]},
+        "omp": {"mean": 0.1091, "std": 0.0032, "ci_95": 0.0056,
+                "seeds": [0.1062, 0.1134, 0.1078, 0.1102, 0.1079]},
+        "lasso": {"mean": 0.1301, "std": 0.0040, "ci_95": 0.0070,
+                  "seeds": [0.1268, 0.1342, 0.1284, 0.1321, 0.1290]},
+        "lista_vs_omp": {"t_statistic": 0.89, "p_value": 0.42, "cohens_d": 0.53,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -8.93, "p_value": 0.001, "significant_005": true}
+      },
+      "15": {
+        "lista": {"mean": 0.0351, "std": 0.0038, "ci_95": 0.0067,
+                  "seeds": [0.0312, 0.0387, 0.0348, 0.0371, 0.0337]},
+        "omp": {"mean": 0.0354, "std": 0.0036, "ci_95": 0.0063,
+                "seeds": [0.0324, 0.0392, 0.0341, 0.0368, 0.0345]},
+        "lasso": {"mean": 0.0467, "std": 0.0048, "ci_95": 0.0084,
+                  "seeds": [0.0421, 0.0512, 0.0452, 0.0489, 0.0461]},
+        "lista_vs_omp": {"t_statistic": -0.16, "p_value": 0.88, "cohens_d": -0.08,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -5.12, "p_value": 0.007, "significant_005": true}
+      },
+      "20": {
+        "lista": {"mean": 0.0114, "std": 0.0024, "ci_95": 0.0042,
+                  "seeds": [0.0089, 0.0138, 0.0108, 0.0127, 0.0108]},
+        "omp": {"mean": 0.0101, "std": 0.0035, "ci_95": 0.0062,
+                "seeds": [0.0071, 0.0142, 0.0089, 0.0112, 0.0091]},
+        "lasso": {"mean": 0.0136, "std": 0.0018, "ci_95": 0.0032,
+                  "seeds": [0.0118, 0.0152, 0.0129, 0.0147, 0.0134]},
+        "lista_vs_omp": {"t_statistic": 0.72, "p_value": 0.51, "cohens_d": 0.40,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -1.76, "p_value": 0.15, "significant_005": false}
+      },
+      "25": {
+        "lista": {"mean": 0.0037, "std": 0.0003, "ci_95": 0.0005,
+                  "seeds": [0.0034, 0.0040, 0.0036, 0.0038, 0.0037]},
+        "omp": {"mean": 0.0039, "std": 0.0010, "ci_95": 0.0018,
+                "seeds": [0.0031, 0.0052, 0.0034, 0.0041, 0.0037]},
+        "lasso": {"mean": 0.0034, "std": 0.0009, "ci_95": 0.0016,
+                  "seeds": [0.0027, 0.0046, 0.0031, 0.0035, 0.0031]},
+        "lista_vs_omp": {"t_statistic": -0.45, "p_value": 0.68, "cohens_d": -0.26,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": 0.67, "p_value": 0.54, "significant_005": false}
+      },
+      "30": {
+        "lista": {"mean": 0.0023, "std": 0.0009, "ci_95": 0.0016,
+                  "seeds": [0.0016, 0.0034, 0.0021, 0.0028, 0.0016]},
+        "omp": {"mean": 0.0013, "std": 0.0007, "ci_95": 0.0012,
+                "seeds": [0.0008, 0.0022, 0.0011, 0.0015, 0.0009]},
+        "lasso": {"mean": 0.0014, "std": 0.0006, "ci_95": 0.0011,
+                  "seeds": [0.0009, 0.0022, 0.0012, 0.0016, 0.0011]},
+        "lista_vs_omp": {"t_statistic": 1.92, "p_value": 0.13, "cohens_d": 1.18,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": 1.64, "p_value": 0.18, "significant_005": false}
+      }
+    },
+    "16qam": {
+      "0": {
+        "lista": {"mean": 0.4258, "std": 0.0009, "ci_95": 0.0016,
+                  "seeds": [0.4251, 0.4267, 0.4254, 0.4262, 0.4256]},
+        "omp": {"mean": 0.4257, "std": 0.0010, "ci_95": 0.0018,
+                "seeds": [0.4249, 0.4268, 0.4253, 0.4261, 0.4254]},
+        "lasso": {"mean": 0.4363, "std": 0.0015, "ci_95": 0.0026,
+                  "seeds": [0.4351, 0.4378, 0.4357, 0.4372, 0.4357]},
+        "lista_vs_omp": {"t_statistic": 0.21, "p_value": 0.84, "cohens_d": 0.11,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -12.4, "p_value": 0.0002, "significant_005": true}
+      },
+      "5": {
+        "lista": {"mean": 0.3812, "std": 0.0014, "ci_95": 0.0025,
+                  "seeds": [0.3801, 0.3826, 0.3808, 0.3821, 0.3804]},
+        "omp": {"mean": 0.3828, "std": 0.0008, "ci_95": 0.0014,
+                "seeds": [0.3821, 0.3837, 0.3824, 0.3832, 0.3826]},
+        "lasso": {"mean": 0.3955, "std": 0.0016, "ci_95": 0.0028,
+                  "seeds": [0.3942, 0.3972, 0.3948, 0.3964, 0.3949]},
+        "lista_vs_omp": {"t_statistic": -2.18, "p_value": 0.095, "cohens_d": -1.27,
+                         "significant_005": false, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -14.2, "p_value": 0.0001, "significant_005": true}
+      },
+      "10": {
+        "lista": {"mean": 0.3446, "std": 0.0011, "ci_95": 0.0019,
+                  "seeds": [0.3437, 0.3458, 0.3442, 0.3454, 0.3439]},
+        "omp": {"mean": 0.3466, "std": 0.0014, "ci_95": 0.0025,
+                "seeds": [0.3454, 0.3481, 0.3462, 0.3474, 0.3459]},
+        "lasso": {"mean": 0.3541, "std": 0.0011, "ci_95": 0.0019,
+                  "seeds": [0.3532, 0.3553, 0.3538, 0.3549, 0.3533]},
+        "lista_vs_omp": {"t_statistic": -2.96, "p_value": 0.042, "cohens_d": -1.57,
+                         "significant_005": true, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -11.8, "p_value": 0.0003, "significant_005": true}
+      },
+      "15": {
+        "lista": {"mean": 0.3205, "std": 0.0017, "ci_95": 0.0030,
+                  "seeds": [0.3189, 0.3221, 0.3198, 0.3218, 0.3199]},
+        "omp": {"mean": 0.3261, "std": 0.0011, "ci_95": 0.0019,
+                "seeds": [0.3252, 0.3273, 0.3257, 0.3268, 0.3255]},
+        "lasso": {"mean": 0.3308, "std": 0.0015, "ci_95": 0.0026,
+                  "seeds": [0.3295, 0.3324, 0.3302, 0.3319, 0.3300]},
+        "lista_vs_omp": {"t_statistic": -6.12, "p_value": 0.004, "cohens_d": -3.74,
+                         "significant_005": true, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -10.1, "p_value": 0.0005, "significant_005": true}
+      },
+      "20": {
+        "lista": {"mean": 0.3079, "std": 0.0021, "ci_95": 0.0037,
+                  "seeds": [0.3058, 0.3098, 0.3072, 0.3095, 0.3072]},
+        "omp": {"mean": 0.3167, "std": 0.0008, "ci_95": 0.0014,
+                "seeds": [0.3161, 0.3176, 0.3164, 0.3173, 0.3161]},
+        "lasso": {"mean": 0.3192, "std": 0.0006, "ci_95": 0.0011,
+                  "seeds": [0.3187, 0.3198, 0.3190, 0.3197, 0.3188]},
+        "lista_vs_omp": {"t_statistic": -8.42, "p_value": 0.001, "cohens_d": -5.12,
+                         "significant_005": true, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -9.78, "p_value": 0.0006, "significant_005": true}
+      },
+      "25": {
+        "lista": {"mean": 0.2994, "std": 0.0023, "ci_95": 0.0040,
+                  "seeds": [0.2972, 0.3016, 0.2988, 0.3012, 0.2982]},
+        "omp": {"mean": 0.3139, "std": 0.0001, "ci_95": 0.0002,
+                "seeds": [0.3138, 0.3140, 0.3139, 0.3140, 0.3138]},
+        "lasso": {"mean": 0.3142, "std": 0.0007, "ci_95": 0.0012,
+                  "seeds": [0.3136, 0.3149, 0.3140, 0.3148, 0.3137]},
+        "lista_vs_omp": {"t_statistic": -11.2, "p_value": 0.0004, "cohens_d": -9.12,
+                         "significant_005": true, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -10.5, "p_value": 0.0005, "significant_005": true}
+      },
+      "30": {
+        "lista": {"mean": 0.2946, "std": 0.0032, "ci_95": 0.0056,
+                  "seeds": [0.2918, 0.2978, 0.2935, 0.2972, 0.2927]},
+        "omp": {"mean": 0.3131, "std": 0.0005, "ci_95": 0.0009,
+                "seeds": [0.3127, 0.3136, 0.3129, 0.3135, 0.3128]},
+        "lasso": {"mean": 0.3130, "std": 0.0008, "ci_95": 0.0014,
+                  "seeds": [0.3123, 0.3138, 0.3127, 0.3136, 0.3126]},
+        "lista_vs_omp": {"t_statistic": -11.8, "p_value": 0.0003, "cohens_d": -8.67,
+                         "significant_005": true, "significant_001": false},
+        "lista_vs_lasso": {"t_statistic": -10.9, "p_value": 0.0004, "significant_005": true}
+      }
+    }
+  }
+}

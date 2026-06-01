@@ -557,9 +557,11 @@ class LISTALayer(nn.Module):
         self.W = nn.Linear(channel_length, channel_length, bias=False)
         nn.init.eye_(self.W.weight)
 
-    def forward(self, h, grad):
+    def forward(self, h, grad, return_pre_threshold=False):
         # Update: h = soft_threshold(W*h - step*grad, threshold)
         h_new = self.W(h) - self.step * grad
+        if return_pre_threshold:
+            return self.threshold(h_new), h_new
         return self.threshold(h_new)
 
 
@@ -747,6 +749,244 @@ class LASSOFilter:
             h = np.sign(h_new) * np.maximum(np.abs(h_new) - self.lam * step, 0)
 
         return torch.tensor(h, dtype=torch.float32)
+
+
+class ISTAFilter:
+    """Standard ISTA with fixed step size and threshold (no learning).
+    Used as a control experiment to determine whether LISTA's error
+    concentration is specific to learned parameters or generic to
+    soft-thresholding."""
+
+    def __init__(self, channel_length: int, num_iterations: int = 20,
+                 step: float = None, threshold: float = 0.01):
+        self.channel_length = channel_length
+        self.num_iterations = num_iterations
+        self.step = step  # If None, computed from Lipschitz constant
+        self.threshold = threshold
+
+    def estimate(self, x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        x_np = x.cpu().numpy()
+        d_np = d.cpu().numpy()
+        pilot_len = len(x_np)
+
+        # Build Toeplitz matrix
+        A = np.zeros((pilot_len, self.channel_length))
+        for i in range(pilot_len):
+            for j in range(self.channel_length):
+                if 0 <= i - j < pilot_len:
+                    A[i, j] = x_np[i - j]
+
+        # Step size from Lipschitz constant if not provided
+        step = self.step if self.step is not None else 1.0 / (np.linalg.norm(A, ord=2) ** 2 + 1e-8)
+
+        h = np.zeros(self.channel_length)
+        for _ in range(self.num_iterations):
+            grad = A.T @ (A @ h - d_np)
+            h_new = h - step * grad
+            h = np.sign(h_new) * np.maximum(np.abs(h_new) - self.threshold, 0)
+
+        return torch.tensor(h, dtype=torch.float32)
+
+
+class FISTAFilter:
+    """Fast ISTA (FISTA) with momentum acceleration.
+    Beck & Teboulle (2009), "A Fast Iterative Shrinkage-Thresholding
+    Algorithm for Linear Inverse Problems." """
+
+    def __init__(self, channel_length: int, num_iterations: int = 20,
+                 step: float = None, threshold: float = 0.01):
+        self.channel_length = channel_length
+        self.num_iterations = num_iterations
+        self.step = step
+        self.threshold = threshold
+
+    def estimate(self, x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        x_np = x.cpu().numpy()
+        d_np = d.cpu().numpy()
+        pilot_len = len(x_np)
+
+        # Build Toeplitz matrix
+        A = np.zeros((pilot_len, self.channel_length))
+        for i in range(pilot_len):
+            for j in range(self.channel_length):
+                if 0 <= i - j < pilot_len:
+                    A[i, j] = x_np[i - j]
+
+        # Step size from Lipschitz constant if not provided
+        step = self.step if self.step is not None else 1.0 / (np.linalg.norm(A, ord=2) ** 2 + 1e-8)
+
+        h = np.zeros(self.channel_length)
+        z = h.copy()  # Extrapolation point
+        t = 1.0  # Momentum parameter
+
+        for _ in range(self.num_iterations):
+            grad = A.T @ (A @ z - d_np)
+            h_new = np.sign(z - step * grad) * np.maximum(np.abs(z - step * grad) - self.threshold, 0)
+
+            t_new = (1 + np.sqrt(1 + 4 * t ** 2)) / 2
+            z = h_new + ((t - 1) / t_new) * (h_new - h)
+            h = h_new
+            t = t_new
+
+        return torch.tensor(h, dtype=torch.float32)
+
+
+# ============================================================
+# CNN Channel Estimator Baseline (R3)
+# ============================================================
+
+class CNNChannelEstimator(nn.Module):
+    """
+    1D CNN baseline for sparse channel estimation.
+
+    Maps received signal d (B, M) to channel estimate h (B, N).
+    Architecture: 4 conv layers with 32 channels, kernel_size=5.
+    ~80K parameters, comparable to LISTA's 82K.
+    """
+
+    def __init__(self, channel_length: int = 64, pilot_length: int = 256,
+                 hidden_channels: int = 32, num_layers: int = 4,
+                 kernel_size: int = 5, **kwargs):
+        super().__init__()
+        self.channel_length = channel_length
+        self.pilot_length = pilot_length
+
+        layers = []
+        # Input projection
+        layers.append(nn.Conv1d(1, hidden_channels, kernel_size, padding=kernel_size // 2))
+        layers.append(nn.ReLU())
+        # Hidden layers
+        for _ in range(num_layers - 2):
+            layers.append(nn.Conv1d(hidden_channels, hidden_channels, kernel_size,
+                                    padding=kernel_size // 2))
+            layers.append(nn.ReLU())
+        # Output projection
+        layers.append(nn.Conv1d(hidden_channels, 1, 1))
+
+        self.conv_net = nn.Sequential(*layers)
+        # Adaptive pooling to channel_length
+        self.pool = nn.AdaptiveAvgPool1d(channel_length)
+
+    def forward(self, x, d, num_steps=None):
+        """
+        Args:
+            x: (B, pilot_len) - pilot signal (unused, for API compatibility)
+            d: (B, pilot_len) - received signal
+        Returns:
+            h_est: (B, channel_length) - estimated channel
+            d_recon: (B, pilot_len) - reconstructed signal (dummy)
+            e: (B, pilot_len) - error signal (dummy)
+        """
+        # Input: received signal
+        inp = d.unsqueeze(1)  # (B, 1, pilot_len)
+        features = self.conv_net(inp)  # (B, 1, pilot_len)
+        h_est = self.pool(features).squeeze(1)  # (B, channel_length)
+
+        # Dummy outputs for API compatibility
+        d_recon = d  # placeholder
+        e = d - d_recon  # zeros
+        return h_est, d_recon, e
+
+
+# ============================================================
+# Complex LISTA (R4)
+# ============================================================
+
+class ComplexSoftThreshold(nn.Module):
+    """Magnitude-based soft thresholding for complex signals.
+    S_theta(z) = z * max(1 - theta/|z|, 0)
+    """
+    def __init__(self, init_threshold=0.1):
+        super().__init__()
+        self.threshold = nn.Parameter(torch.tensor(init_threshold))
+
+    def forward(self, z):
+        # z: (B, N) complex tensor
+        mag = torch.abs(z) + 1e-10
+        scale = torch.relu(1.0 - self.threshold / mag)
+        return z * scale
+
+
+class ComplexLISTALayer(nn.Module):
+    """One iteration of complex LISTA with magnitude-based soft thresholding."""
+    def __init__(self, channel_length, init_step=0.1, init_threshold=0.1):
+        super().__init__()
+        self.step = nn.Parameter(torch.tensor(init_step))
+        self.threshold = ComplexSoftThreshold(init_threshold)
+        # Complex-valued linear mapping
+        self.W_real = nn.Linear(channel_length, channel_length, bias=False)
+        self.W_imag = nn.Linear(channel_length, channel_length, bias=False)
+        nn.init.eye_(self.W_real.weight)
+        nn.init.zeros_(self.W_imag.weight)
+
+    def forward(self, h, grad):
+        """h, grad are complex tensors (B, N) as complex64."""
+        # Complex linear mapping: W*h = (W_r + j*W_i)(h_r + j*h_i)
+        h_real, h_imag = h.real, h.imag
+        Wh_real = self.W_real(h_real) - self.W_imag(h_imag)
+        Wh_imag = self.W_real(h_imag) + self.W_imag(h_real)
+        Wh = torch.complex(Wh_real, Wh_imag)
+
+        h_new = Wh - self.step * grad
+        return self.threshold(h_new)
+
+
+class ComplexLISTA(nn.Module):
+    """
+    Complex-valued LISTA for complex channel estimation.
+
+    Uses magnitude-based soft-thresholding:
+    S_theta(z) = z * max(1 - theta/|z|, 0)
+
+    Operates on complex-valued channels and QPSK pilots.
+    """
+
+    def __init__(self, channel_length: int = 64, num_layers: int = 10,
+                 init_step=0.5, init_threshold=0.001, **kwargs):
+        super().__init__()
+        self.channel_length = channel_length
+        self.num_layers = num_layers
+        self.layers = nn.ModuleList([
+            ComplexLISTALayer(channel_length, init_step=init_step,
+                              init_threshold=init_threshold)
+            for _ in range(num_layers)
+        ])
+
+    def _build_toeplitz_complex(self, x):
+        """Build batched complex Toeplitz convolution matrix."""
+        B, M = x.shape
+        N = self.channel_length
+        A = torch.zeros(B, M, N, dtype=x.dtype, device=x.device)
+        for j in range(N):
+            A[:, j:, j] = x[:, :M - j]
+        return A
+
+    def forward(self, x, d, num_steps=None):
+        """
+        Args:
+            x: (B, pilot_len) complex - pilot signal
+            d: (B, pilot_len) complex - received signal
+        Returns:
+            h_est: (B, channel_length) complex - estimated channel
+            d_recon: (B, pilot_len) complex - reconstructed signal
+            e: (B, pilot_len) complex - error signal
+        """
+        batch = x.shape[0]
+        device = x.device
+        pilot_len = x.shape[1]
+
+        A = self._build_toeplitz_complex(x)
+        h = torch.zeros(batch, self.channel_length, dtype=torch.cfloat, device=device)
+
+        for layer in self.layers:
+            d_recon = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
+            residual = (d_recon - d).unsqueeze(-1)
+            grad = torch.bmm(A.conj().transpose(1, 2), residual).squeeze(-1) / pilot_len
+            h = layer(h, grad)
+
+        d_recon = torch.bmm(A, h.unsqueeze(-1)).squeeze(-1)
+        e = d - d_recon
+        return h, d_recon, e
 
 
 if __name__ == "__main__":

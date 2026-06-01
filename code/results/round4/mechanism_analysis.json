@@ -1,0 +1,152 @@
+{
+  "config": {
+    "N": 64,
+    "M": 256,
+    "K": 5,
+    "L": 20,
+    "num_test": 200,
+    "num_seeds": 3
+  },
+  "support_recovery": {
+    "0": {
+      "lista": {
+        "jaccard_mean": 0.6891666666666667,
+        "jaccard_std": 0.21773680068811913,
+        "precision_mean": 0.7956666666666666,
+        "recall_mean": 0.7956666666666666
+      },
+      "omp": {
+        "jaccard_mean": 0.6962566137566139,
+        "jaccard_std": 0.21749416044471728,
+        "precision_mean": 0.8009999999999999,
+        "recall_mean": 0.8009999999999999
+      }
+    },
+    "10": {
+      "lista": {
+        "jaccard_mean": 0.8982738095238094,
+        "jaccard_std": 0.1678182895763347,
+        "precision_mean": 0.937,
+        "recall_mean": 0.937
+      },
+      "omp": {
+        "jaccard_mean": 0.9025595238095238,
+        "jaccard_std": 0.1654122756832516,
+        "precision_mean": 0.9396666666666665,
+        "recall_mean": 0.9396666666666665
+      }
+    },
+    "20": {
+      "lista": {
+        "jaccard_mean": 0.9272222222222223,
+        "jaccard_std": 0.1487859452219558,
+        "precision_mean": 0.955,
+        "recall_mean": 0.955
+      },
+      "omp": {
+        "jaccard_mean": 0.9643650793650795,
+        "jaccard_std": 0.10624844195795685,
+        "precision_mean": 0.9783333333333334,
+        "recall_mean": 0.9783333333333334
+      }
+    },
+    "30": {
+      "lista": {
+        "jaccard_mean": 0.9292857142857143,
+        "jaccard_std": 0.1466927543280022,
+        "precision_mean": 0.9563333333333335,
+        "recall_mean": 0.9563333333333335
+      },
+      "omp": {
+        "jaccard_mean": 0.9886507936507936,
+        "jaccard_std": 0.06409195766662884,
+        "precision_mean": 0.9929999999999999,
+        "recall_mean": 0.9929999999999999
+      }
+    }
+  },
+  "error_sparsity": {
+    "0": {
+      "lista": {
+        "error_on_support_mean": 0.2300718776664386,
+        "error_on_nonsupport_mean": 0.7699281202256679,
+        "gini_mean": 0.6850543509946605,
+        "est_sparsity_mean": 0.9496592825651169
+      },
+      "omp": {
+        "error_on_support_mean": 0.6165863095829264,
+        "error_on_nonsupport_mean": 0.38341369266311326,
+        "gini_mean": 0.9403532163124934,
+        "est_sparsity_mean": 1.000000004072984
+      }
+    },
+    "10": {
+      "lista": {
+        "error_on_support_mean": 0.9093722166617711,
+        "error_on_nonsupport_mean": 0.0906277866616036,
+        "gini_mean": 0.9231801915534663,
+        "est_sparsity_mean": 0.9997413944204648
+      },
+      "omp": {
+        "error_on_support_mean": 0.8628685780769835,
+        "error_on_nonsupport_mean": 0.13713142504294715,
+        "gini_mean": 0.9465993804309668,
+        "est_sparsity_mean": 1.0000000031789145
+      }
+    },
+    "20": {
+      "lista": {
+        "error_on_support_mean": 0.9994035497307777,
+        "error_on_nonsupport_mean": 0.0005964534276154155,
+        "gini_mean": 0.9422032940048329,
+        "est_sparsity_mean": 0.9999967058499654
+      },
+      "omp": {
+        "error_on_support_mean": 0.9485413735359907,
+        "error_on_nonsupport_mean": 0.05145863711833954,
+        "gini_mean": 0.9480653268048173,
+        "est_sparsity_mean": 1.000000005463759
+      }
+    },
+    "30": {
+      "lista": {
+        "error_on_support_mean": 0.9995288313428561,
+        "error_on_nonsupport_mean": 0.0004711750454074111,
+        "gini_mean": 0.9412224729563335,
+        "est_sparsity_mean": 0.9999973846475283
+      },
+      "omp": {
+        "error_on_support_mean": 0.9831101026634376,
+        "error_on_nonsupport_mean": 0.0168899042904377,
+        "gini_mean": 0.9485321897153303,
+        "est_sparsity_mean": 1.0000000036756198
+      }
+    }
+  },
+  "noise_enhancement": {
+    "0": {
+      "lista_mean": 12.262303529332081,
+      "lista_std": 146.32007861200026,
+      "omp_mean": 14.05442147543033,
+      "omp_std": 135.0932563766352
+    },
+    "10": {
+      "lista_mean": 5.829760889559984,
+      "lista_std": 15.772536180153244,
+      "omp_mean": 9.579785384759306,
+      "omp_std": 63.87094432773621
+    },
+    "20": {
+      "lista_mean": 7.754762074972192,
+      "lista_std": 25.437670567099378,
+      "omp_mean": 13.65739208313326,
+      "omp_std": 131.55204731050168
+    },
+    "30": {
+      "lista_mean": 25.296763144383828,
+      "lista_std": 325.0371749698826,
+      "omp_mean": 6.06512461754183,
+      "omp_std": 19.198506049959477
+    }
+  }
+}
