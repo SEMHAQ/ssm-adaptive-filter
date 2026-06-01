@@ -79,7 +79,7 @@ desktop.ini
 
 # Compiled / output
 *.pdf
-!paper/figures
+!paper/figures/*.pdf
 *.png
 *.jpg
 *.jpeg
