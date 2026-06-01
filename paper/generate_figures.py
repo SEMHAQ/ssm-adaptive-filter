@@ -233,7 +233,7 @@ def fig_nmse_vs_sparsity():
     ax.set_xlabel('Sparsity $K$')
     ax.set_ylabel('NMSE (dB)')
     ax.set_xticks(K)
-    ax.legend(fontsize=7.5, loc='upper left')
+    ax.legend(fontsize=7.5, loc='center right')
     ax.grid(alpha=0.25)
 
     ax.annotate('Divergence\n(1/5 seeds)',
