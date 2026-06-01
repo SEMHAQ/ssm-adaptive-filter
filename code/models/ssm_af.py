@@ -840,12 +840,12 @@ class CNNChannelEstimator(nn.Module):
     1D CNN baseline for sparse channel estimation.
 
     Maps received signal d (B, M) to channel estimate h (B, N).
-    Architecture: 4 conv layers with 32 channels, kernel_size=5.
-    ~80K parameters, comparable to LISTA's 82K.
+    Architecture: 4 conv layers with 96 channels, kernel_size=5.
+    ~94K parameters, comparable to LISTA's 82K.
     """
 
     def __init__(self, channel_length: int = 64, pilot_length: int = 256,
-                 hidden_channels: int = 32, num_layers: int = 4,
+                 hidden_channels: int = 96, num_layers: int = 4,
                  kernel_size: int = 5, **kwargs):
         super().__init__()
         self.channel_length = channel_length

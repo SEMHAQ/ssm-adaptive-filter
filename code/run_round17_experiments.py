@@ -446,7 +446,7 @@ def exp_cnn_baseline(save_dir, device, seeds=5, num_test=200):
 
         # Train CNN
         print("  Training CNN...")
-        cnn = CNNChannelEstimator(N, pilot, hidden_channels=32, num_layers=4, kernel_size=5)
+        cnn = CNNChannelEstimator(N, pilot, hidden_channels=96, num_layers=4, kernel_size=5)
         n_cnn_params = sum(p.numel() for p in cnn.parameters())
         print(f"    CNN parameters: {n_cnn_params:,}")
         cnn = train_cnn(cnn, N, K, pilot, epochs=200, device=device)
@@ -504,7 +504,7 @@ def exp_cnn_baseline(save_dir, device, seeds=5, num_test=200):
     )
     # Retrain CNN for error concentration
     torch.manual_seed(0)
-    cnn_ec = CNNChannelEstimator(N, pilot, hidden_channels=32, num_layers=4, kernel_size=5)
+    cnn_ec = CNNChannelEstimator(N, pilot, hidden_channels=96, num_layers=4, kernel_size=5)
     cnn_ec = train_cnn(cnn_ec, N, K, pilot, epochs=200, device=device)
     cnn_ec.eval()
     with torch.no_grad():
