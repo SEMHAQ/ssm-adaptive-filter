@@ -27,13 +27,13 @@
 \def\textpagefraction{.001}
 
 % Short title
-\shorttitle{Analysis of LISTA for Sparse Channel Estimation}
+\shorttitle{LISTA Error Concentration for Channel Estimation}
 
 % Short author
 \shortauthors{H. Yu}
 
 % Main title of the paper
-\title [mode = title]{Systematic Analysis of Deep-Unfolded LISTA for Sparse Channel Estimation: Generalization, Error Structure, and Ablation}
+\title [mode = title]{Deep-Unfolded LISTA for Sparse Channel Estimation: Error Concentration Mechanism, Ablation, and Practical Deployment}
 
 % First author
 \author[1]{Huanjie Yu}[orcid=0009-0008-9824-1801]
@@ -55,9 +55,9 @@
 
 % Abstract
 \begin{abstract}
-We present a systematic analysis of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) for sparse channel estimation. Error concentration on true tap locations is a known property of soft-thresholding; we \emph{quantify} how LISTA's learned parameters \emph{enhance} this effect. Standard ISTA concentrates $92.4\%$ of error on true taps; LISTA's learned threshold schedule enhances this to $100.0\% \pm 0.0\%$ (20 seeds), placing $379\times$ less error on non-support taps. Pre-thresholding analysis ($68.3\%$ before thresholding) and an ISTA control experiment confirm this is a genuine learned property, not a trivial artifact of sparse outputs. The enhancement transfers to $K=10$, ITU channels, and complex-valued channels ($97.8\%$).
+We investigate the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) for sparse channel estimation, identifying and quantifying an \emph{error concentration mechanism}: LISTA's learned parameters enhance error concentration on true tap locations from $92.4\%$ (standard ISTA) to $100.0\% \pm 0.0\%$ (20 seeds), placing $379\times$ less error on non-support taps. Pre-thresholding analysis ($68.3\%$ before thresholding) and ISTA/FISTA control experiments confirm this is a genuine learned property. The mechanism transfers to $K=10$, ITU channels ($99.3$--$99.5\%$), and complex-valued channels ($97.8\%$).
 
-Despite NMSE saturation at $-25$~dB on i.i.d.~Gaussian channels (trailing OMP by 13--33~dB), error concentration provides BER benefits under ZF equalization for 16-QAM at SNR $\geq 15$~dB ($p < 0.05$). Under MMSE equalization, all estimators converge to similar BER at SNR $\geq 5$~dB. Ablation (20 seeds) shows the per-layer threshold schedule is dominant ($+14$--$18$~dB) and $\mathbf{W}^{(k)}$ contributes $+1.24$~dB ($p < 0.001$). A threshold function comparison shows hard thresholding outperforms soft by $7.1$~dB ($p < 0.001$) within the same architecture, indicating the learned schedule adapts thresholding behavior. SNR-specific training achieves $-31$~dB ($6$~dB improvement). We discuss connections to AMP theory; our findings are consistent with Onsager-type correction frameworks but direct validation remains future work.
+Despite NMSE saturation at $-25$~dB on i.i.d.~Gaussian channels (trailing OMP by 13--33~dB), error concentration provides tangible BER benefits under ZF equalization for 16-QAM at SNR $\geq 15$~dB ($p < 0.05$). Under MMSE equalization, all estimators converge to similar BER at SNR $\geq 5$~dB. Comprehensive ablation (20 seeds, Holm--Bonferroni corrected) reveals the per-layer threshold schedule as the dominant learned component ($+14$--$18$~dB), with $\mathbf{W}^{(k)}$ contributing $+1.24$~dB ($p < 0.001$). A threshold function comparison shows hard thresholding outperforms soft by $7.1$~dB ($p < 0.001$), indicating the learned schedule adapts thresholding behavior. For practical deployment, SNR-specific training achieves $-31$~dB ($6$~dB improvement), and LISTA requires $M/N \geq 2$ for stable operation. We discuss connections to AMP theory; our findings are consistent with Onsager-type correction frameworks but direct validation remains future work.
 \end{abstract}
 
 % Research highlights
@@ -186,7 +186,14 @@ We adopt the standard LISTA architecture~\citep{gregor2010learning} and adapt it
 \end{equation}
 where $\mathbf{g}^{(k)} = \mathbf{X}^T(\mathbf{X}\mathbf{h}^{(k)} - \mathbf{d})$ is the gradient of the data fidelity term, $\mu^{(k)} > 0$ is the learnable step size, $\theta^{(k)} > 0$ is the learnable threshold, and $\mathbf{W}^{(k)} \in \mathbb{R}^{N \times N}$ is a learnable linear mapping.
 
-The learnable mapping $\mathbf{W}^{(k)}$ is a standard component of LISTA~\citep{gregor2010learning}. In the original ISTA iteration, this is the identity matrix $\mathbf{I}$. In LISTA, $\mathbf{W}^{(k)}$ is initialized as $\mathbf{I}$ and updated during training, effectively learning a preconditioner that captures inter-tap dependencies. For wireless multipath channels, this mapping can encode correlations between tap locations and amplitudes that arise from the physical propagation environment.
+The learnable mapping $\mathbf{W}^{(k)}$ is a standard component of LISTA~\citep{gregor2010learning}. In the original ISTA iteration, this is the identity matrix $\mathbf{I}$. In LISTA, $\mathbf{W}^{(k)}$ is initialized as $\mathbf{I}$ and updated during training, effectively learning a preconditioner that captures inter-tap dependencies. For wireless multipath channels, this mapping can encode correlations between tap locations and amplitudes that arise from the physical propagation environment. Figure~\ref{fig:architecture} illustrates the LISTA architecture.
+
+\begin{figure}
+\centering
+\includegraphics[width=0.9\textwidth]{figures/fig_architecture.pdf}
+\caption{LISTA architecture for sparse channel estimation. Each layer $k$ applies a learnable linear mapping $\mathbf{W}^{(k)}$, gradient step with learnable step size $\mu^{(k)}$, and soft-thresholding with learnable threshold $\theta^{(k)}$.}\label{fig:architecture}
+\end{figure}
+\FloatBarrier
 
 The soft-thresholding operator uses a learnable per-layer threshold:
 \begin{equation}\label{eq:learned_threshold}
@@ -689,7 +696,14 @@ This ZF advantage is specific to error-structure-sensitive equalizers; under MMS
 
 \subsubsection{Summary}
 
-Under MMSE (the standard equalizer), all estimators converge to similar BER at SNR $\geq 5$~dB---expected behavior, not a LISTA advantage. Under ZF equalization, LISTA achieves comparable QPSK BER and significantly better 16-QAM BER at SNR $\geq 15$~dB ($p < 0.05$), attributable to error concentration on true taps (Section~\ref{sec:exp_mechanism}).
+Under MMSE (the standard equalizer), all estimators converge to similar BER at SNR $\geq 5$~dB---expected behavior, not a LISTA advantage. Under ZF equalization, LISTA achieves comparable QPSK BER and significantly better 16-QAM BER at SNR $\geq 15$~dB ($p < 0.05$), attributable to error concentration on true taps (Section~\ref{sec:exp_mechanism}). Figure~\ref{fig:ber_nmse_disconnect} illustrates this BER--NMSE disconnect: LISTA trails OMP by 12--27~dB in NMSE (panel a) but matches or beats OMP in 16-QAM BER under ZF equalization (panel b).
+
+\begin{figure}
+\centering
+\includegraphics[width=0.9\textwidth]{figures/fig_ber_nmse_disconnect.pdf}
+\caption{BER--NMSE disconnect. (a)~LISTA trails OMP by 12--27~dB in NMSE. (b)~Under ZF equalization with 16-QAM, LISTA matches or beats OMP at SNR $\geq 15$~dB ($p < 0.05$), due to error concentration on true taps.}\label{fig:ber_nmse_disconnect}
+\end{figure}
+\FloatBarrier
 
 \subsection{Experiment 12: Ablation with Increased Statistical Power}\label{sec:exp_ablation20}
 
@@ -744,7 +758,14 @@ Table~\ref{tab:threshold_comparison} reveals a striking result: hard thresholdin
 
 This result has important implications for understanding LISTA's learned behavior. Hard thresholding does not shrink large coefficients (unlike soft thresholding, which reduces all coefficients by $\theta$). On sparse channels where the true taps have large amplitudes, hard thresholding preserves them exactly while zeroing out non-support taps. The $7.1$~dB advantage suggests that LISTA's learned threshold schedule may be implicitly adapting toward harder thresholding behavior---the per-layer thresholds decrease monotonically (Table~\ref{tab:learned_thresholds}), and the learned step sizes produce intermediate values that, after thresholding, approximate hard-thresholding decisions. This interpretation is consistent with the ablation finding that the threshold schedule is the dominant learned component: the schedule controls \emph{how aggressively} non-support taps are zeroed, and harder thresholding is more effective for sparse channels.
 
-The semi-soft (garrote) thresholding interpolates between soft and hard thresholding: for large $|z|$, it approaches identity (no shrinkage), while for $|z|$ near $\theta$, it behaves like soft thresholding. Its $3.3$~dB advantage over soft thresholding confirms that reducing shrinkage bias on large coefficients improves recovery---a known property of garrote thresholding in the statistics literature~\citep{antoniadis2001wavelet}.
+The semi-soft (garrote) thresholding interpolates between soft and hard thresholding: for large $|z|$, it approaches identity (no shrinkage), while for $|z|$ near $\theta$, it behaves like soft thresholding. Its $3.3$~dB advantage over soft thresholding confirms that reducing shrinkage bias on large coefficients improves recovery---a known property of garrote thresholding in the statistics literature~\citep{antoniadis2001wavelet}. Figure~\ref{fig:threshold_comparison} visualizes these comparisons.
+
+\begin{figure}
+\centering
+\includegraphics[width=0.55\textwidth]{figures/fig_threshold_comparison.pdf}
+\caption{Threshold function comparison within the LISTA architecture. Hard thresholding outperforms soft by $7.1$~dB ($p < 0.001$), indicating the learned threshold schedule adapts behavior beyond default soft-thresholding.}\label{fig:threshold_comparison}
+\end{figure}
+\FloatBarrier
 
 
 \subsection{Experiment 14: BER-NMSE Mechanism Analysis}\label{sec:exp_mechanism}
@@ -802,7 +823,14 @@ OMP   & $95.2 \pm 0.6$ & $4.81 \pm 0.59$ & $0.948 \pm 0.000$ & $100.0 \pm 0.0$ \
 
 The error sparsity analysis quantifies the key mechanism (Table~\ref{tab:error_sparsity}). LISTA's learned parameters enhance error concentration on the true tap locations ($S$) to $100.0\% \pm 0.0\%$, with only $0.01\% \pm 0.01\%$ on non-support taps. OMP also concentrates most error on support ($95.2\% \pm 0.6\%$), but places $4.81\% \pm 0.59\%$ on non-support taps---a $481\times$ higher fraction than LISTA. Both methods achieve high Gini coefficients ($\sim$$0.94$), indicating sparse error distributions, but LISTA's error is almost entirely confined to the true support. The negligible standard deviations across 5 seeds ($<0.02\%$ for LISTA) confirm that these differences are statistically robust.
 
-This finding explains the BER-NMSE disconnect. Zero-forcing equalization is sensitive to \emph{where} estimation errors occur, not just their total magnitude. Errors on non-support taps create spurious channel components that distort the equalized constellation, while errors on true taps primarily scale existing symbols. LISTA's soft-thresholding operator enforces sparsity in the estimate, which concentrates residual errors on the true tap locations---exactly where they are least harmful for equalization. OMP, despite lower total NMSE, places $50\times$ more error energy on non-support taps ($5.1\%$ vs $0.1\%$), creating spurious components that degrade BER, particularly for higher-order modulations like 16-QAM.
+This finding explains the BER-NMSE disconnect (Fig.~\ref{fig:error_concentration}). Zero-forcing equalization is sensitive to \emph{where} estimation errors occur, not just their total magnitude. Errors on non-support taps create spurious channel components that distort the equalized constellation, while errors on true taps primarily scale existing symbols. LISTA's soft-thresholding operator enforces sparsity in the estimate, which concentrates residual errors on the true tap locations---exactly where they are least harmful for equalization. OMP, despite lower total NMSE, places $50\times$ more error energy on non-support taps ($5.1\%$ vs $0.1\%$), creating spurious components that degrade BER, particularly for higher-order modulations like 16-QAM.
+
+\begin{figure}
+\centering
+\includegraphics[width=0.6\textwidth]{figures/fig_error_concentration.pdf}
+\caption{Error concentration on true tap locations. LISTA's learned parameters enhance concentration from $92.4\%$ (ISTA) to $100.0\%$. Pre-thresholding analysis ($68.3\%$) confirms this is a learned property, not a trivial artifact.}\label{fig:error_concentration}
+\end{figure}
+\FloatBarrier
 
 \subsubsection{ISTA Control Experiment}\label{sec:exp_ista_control}
 
@@ -864,7 +892,14 @@ Layer $k$ & $\theta^{(k)}$ & $\mu^{(k)}$ \\
 \end{tabular*}
 \end{table}
 
-The learned thresholds follow a monotonically decreasing schedule (Table~\ref{tab:learned_thresholds}), from $\theta^{(0)} = 0.0234$ at the first layer to $\theta^{(19)} = 0.0115$ at the last---a $2\times$ reduction. This schedule is consistent with the ISTA convergence path: early layers apply aggressive thresholding to quickly zero out non-support taps, while later layers use gentler thresholding to refine the support tap estimates. The step sizes $\mu^{(k)}$ also decrease monotonically ($0.482$ to $0.392$), reflecting progressively smaller gradient updates as the estimate converges. The ablation study (Section~\ref{sec:exp_ablation20}) confirms that this per-layer schedule is the dominant contributor to LISTA's performance ($+14$--$18$~dB degradation when the schedule is removed).
+The learned thresholds follow a monotonically decreasing schedule (Table~\ref{tab:learned_thresholds}, Fig.~\ref{fig:threshold_schedule}), from $\theta^{(0)} = 0.0234$ at the first layer to $\theta^{(19)} = 0.0115$ at the last---a $2\times$ reduction. This schedule is consistent with the ISTA convergence path: early layers apply aggressive thresholding to quickly zero out non-support taps, while later layers use gentler thresholding to refine the support tap estimates. The step sizes $\mu^{(k)}$ also decrease monotonically ($0.482$ to $0.392$), reflecting progressively smaller gradient updates as the estimate converges. The ablation study (Section~\ref{sec:exp_ablation20}) confirms that this per-layer schedule is the dominant contributor to LISTA's performance ($+14$--$18$~dB degradation when the schedule is removed).
+
+\begin{figure}
+\centering
+\includegraphics[width=0.6\textwidth]{figures/fig_threshold_schedule.pdf}
+\caption{Learned per-layer threshold values $\theta^{(k)}$ and step sizes $\mu^{(k)}$ (mean $\pm$ std over 20 seeds). The monotonically decreasing schedule applies aggressive thresholding early and gentle refinement late.}\label{fig:threshold_schedule}
+\end{figure}
+\FloatBarrier
 
 \textbf{Revised interpretation (updated).} The error concentration mechanism is \emph{not} a trivial artifact of soft-thresholding producing sparse outputs. The pre-thresholding analysis shows that LISTA's intermediate representations contain substantial non-support error ($31.7\%$), which is eliminated by the learned thresholds. The mechanism is best understood as: (1) the soft-thresholding operator provides the \emph{structural capacity} for error concentration (ISTA achieves $92.4\%$ with fixed thresholds), and (2) LISTA's learned per-layer threshold schedule \emph{optimizes} this capacity, achieving $100.0\%$ by calibrating thresholds to zero out exactly the non-support components. The $267\times$ non-support error reduction relative to OMP and $379\times$ relative to ISTA are genuine learned properties, not arithmetic artifacts.
 
@@ -1121,7 +1156,14 @@ These results validate that LISTA's core mechanism---soft-thresholding enforcing
 %% ============================================================
 \section{Conclusion}\label{sec:conclusion}
 
-We investigated the application of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) to sparse multipath channel estimation. Our primary contribution is to \emph{quantify} how LISTA's learned parameters \emph{enhance} error concentration on true tap locations from $92.4\%$ (standard ISTA) to $100.0\% \pm 0.0\%$ (20 seeds), placing $379\times$ less error on non-support taps than ISTA. Pre-thresholding analysis confirms this enhancement is a genuine learned property ($68.3\%$ before thresholding), and it transfers to complex-valued channels ($97.8\%$). Through systematic analysis including ablation studies, generalization experiments, BER simulations, and practical deployment tests, we provide a comprehensive characterization of deep unfolding for channel estimation.
+We investigated the application of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) to sparse multipath channel estimation (Fig.~\ref{fig:summary}). Our primary contribution is to \emph{quantify} how LISTA's learned parameters \emph{enhance} error concentration on true tap locations from $92.4\%$ (standard ISTA) to $100.0\% \pm 0.0\%$ (20 seeds), placing $379\times$ less error on non-support taps than ISTA. Pre-thresholding analysis confirms this enhancement is a genuine learned property ($68.3\%$ before thresholding), and it transfers to complex-valued channels ($97.8\%$). Through systematic analysis including ablation studies, generalization experiments, BER simulations, and practical deployment tests, we provide a comprehensive characterization of deep unfolding for channel estimation.
+
+\begin{figure}
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig_summary.pdf}
+\caption{Summary of key findings. LISTA trails OMP/FISTA in NMSE but achieves competitive BER under ZF equalization through error concentration on true tap locations. The learned threshold schedule is the dominant mechanism, and hard thresholding outperforms soft by 7.1~dB.}\label{fig:summary}
+\end{figure}
+\FloatBarrier
 
 On i.i.d.~Gaussian channels, LISTA's NMSE saturates at approximately $-25$~dB for SNR $\geq 10$~dB, trailing OMP by 13--33~dB. A CNN baseline with comparable parameters ($80$K vs $82$K) achieves similar NMSE ($-24.78$ vs $-24.25$~dB at SNR$=20$~dB), confirming the saturation is not specific to deep unfolding. BER simulations (200 realizations, 5 seeds, paired $t$-tests) confirm that under MMSE equalization all estimators converge to similar BER at SNR $\geq 5$~dB ($p > 0.05$). The primary contribution is the quantification of LISTA's error concentration enhancement (Section~\ref{sec:exp_mechanism}): error concentration on true taps is a known property of soft-thresholding (ISTA: $92.4\%$), and LISTA's learned parameters enhance it to $100.0\% \pm 0.0\%$ (20 seeds). A pre-thresholding analysis (Section~\ref{sec:pre_threshold}) confirms this is a genuine learned property---before thresholding, only $68.3\%$ of error lies on the support set, demonstrating that the learned thresholds perform oracle support selection. The enhancement transfers to complex-valued channels with QPSK pilots ($97.8\% \pm 0.3\%$, Appendix~\ref{sec:complex}). A FISTA comparison shows FISTA outperforms LISTA by $1$--$27$~dB, confirming LISTA's value lies in the error concentration enhancement rather than NMSE accuracy. The ablation study with 20 seeds reveals the per-layer threshold schedule is the dominant contributor ($+14$--$18$~dB degradation), while $\mathbf{W}^{(k)}$ contributes $+1.24$~dB ($p < 0.001$, $d = 1.5$). A threshold function comparison (Section~\ref{sec:exp_threshold}) shows hard thresholding outperforms soft by $7.1$~dB ($p < 0.001$) within the same LISTA architecture, indicating that the learned threshold schedule adapts the thresholding behavior beyond default soft-thresholding.
 
@@ -1133,6 +1175,13 @@ On realistic ITU channel models, LISTA achieves $-23$ to $-27$~dB NMSE. A pilot 
 %% ============================================================
 \bibliographystyle{cas-model2-names}
 \bibliography{references}
+
+
+%% ============================================================
+%% Supplementary Material Reference
+%% ============================================================
+\section*{Supplementary Material}
+Additional experimental results are provided in the Supplementary Material, including: cross-table consistency analysis (Table~S1), network depth analysis (Table~S2), inference time comparison (Table~S3), ITU channel results (Table~S4), LISTA-CP comparison (Table~S5), SNR mitigation strategies (Table~S6), CNN baseline comparison (Table~S7), ZF vs.~MMSE BER comparison (Table~S8), ISTA control error sparsity (Table~S9), learned threshold values (Table~S10), extended error sparsity analysis (Table~S11), FISTA comparison (Table~S12), equalizer noise enhancement (Table~S13), ITU error sparsity (Table~S14), and complex-valued channel estimation (Tables~S15--S16).
 
 
 %% ============================================================
