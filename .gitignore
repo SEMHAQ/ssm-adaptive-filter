@@ -80,6 +80,7 @@ desktop.ini
 # Compiled / output
 *.pdf
 !paper/figures/*.pdf
+!submission/*.pdf
 *.png
 *.jpg
 *.jpeg

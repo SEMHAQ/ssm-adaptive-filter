@@ -1,0 +1,46 @@
+\documentclass[11pt,a4paper]{letter}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{parskip}
+
+\signature{Huanjie Yu\\School of Computer Science\\Hunan University of Technology and Business\\Changsha, Hunan 410205, China\\Email: semhaqx@gmail.com\\ORCID: 0009-0008-9824-1801}
+
+\begin{document}
+
+\begin{letter}{Editorial Office\\Digital Signal Processing\\Elsevier}
+
+\opening{Dear Editor,}
+
+We would like to submit our manuscript entitled ``Deep-unfolded LISTA for sparse channel estimation: Error concentration and BER implications'' for consideration for publication in \textit{Digital Signal Processing}.
+
+\textbf{Summary.} This paper provides a mechanism analysis of the Learned Iterative Shrinkage-Thresholding Algorithm (LISTA) applied to sparse multipath channel estimation. Rather than proposing a new architecture, we investigate a counter-intuitive finding: LISTA's NMSE saturates 12--33~dB behind classical methods (OMP, FISTA), yet it delivers competitive BER performance under certain equalization conditions.
+
+\textbf{Key Contributions.}
+\begin{enumerate}
+    \item \textbf{Error concentration mechanism.} We quantify how LISTA's learned parameters concentrate 100\% of estimation error on true tap locations (vs.\ 95\% for OMP and 92\% for ISTA), placing $379\times$ less error on non-support taps.
+    \item \textbf{Ablation with statistical rigor.} Ablation studies (20 seeds, Holm--Bonferroni corrected) identify the per-layer threshold schedule as the dominant learned component ($+14$--$18$~dB).
+    \item \textbf{Practical deployment guidance.} We provide a decision framework: use LISTA when inference speed ($25\times$ faster batched inference) and BER under ZF equalization matter; use OMP/FISTA when NMSE accuracy is paramount.
+    \item \textbf{Generalization.} The error concentration mechanism transfers to ITU channel models (99.5\%) and complex-valued pilots (97.8\%).
+\end{enumerate}
+
+\textbf{Significance.} This paper addresses a gap between the deep unfolding literature's claims and practical performance. By honestly characterizing LISTA's limitations (NMSE saturation) and strengths (error concentration, inference speed), we provide guidance that helps practitioners choose the right tool for their specific deployment scenario. This type of mechanism analysis is valuable to the signal processing community.
+
+\textbf{Fit with DSP.} This work aligns with DSP's scope in adaptive filtering, sparse signal processing, and deep learning for communications. The paper emphasizes reproducibility (20 seeds, corrected statistics, code available at \url{https://github.com/SEMHAQ/ssm-adaptive-filter}).
+
+\textbf{Declarations.}
+\begin{itemize}
+    \item \textbf{Conflict of Interest:} None.
+    \item \textbf{Funding:} None.
+    \item \textbf{Ethical Approval:} Not applicable (no human subjects or sensitive data).
+    \item \textbf{Data Availability:} All code and data are publicly available at \url{https://github.com/SEMHAQ/ssm-adaptive-filter}.
+    \item \textbf{AI Disclosure:} Claude (Anthropic, Inc.) was used for text editing, figure generation scripts, code review, citation verification, and simulated peer review. The author reviewed and edited all content and takes full responsibility.
+\end{itemize}
+
+This manuscript has not been published elsewhere and is not under consideration by another journal. The author has approved the manuscript and agrees with its submission to \textit{Digital Signal Processing}.
+
+We look forward to your decision.
+
+\closing{Sincerely,}
+
+\end{letter}
+\end{document}
